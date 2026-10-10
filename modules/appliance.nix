@@ -19,7 +19,7 @@ in {
     networking.networkmanager.wifi.powersave = false;
     networking.useDHCP = false;
     networking.firewall = {
-      allowedTCPPorts = [ 22 ];
+      interfaces.${config.services.tailscale.interfaceName}.allowedTCPPorts = [ 22 ];
       interfaces.${cfg.wifiInterface} = {
         allowedTCPPorts = [ 80 ];
         allowedUDPPorts = [ 53 67 ];
@@ -27,8 +27,13 @@ in {
     };
     services.openssh = {
       enable = true;
+      openFirewall = false;
       authorizedKeysFiles = [ "/var/lib/appliance-keys/%u" ];
-      settings = { PasswordAuthentication = false; PermitRootLogin = "no"; };
+      settings = {
+        PasswordAuthentication = false;
+        KbdInteractiveAuthentication = false;
+        PermitRootLogin = "no";
+      };
     };
     services.avahi = { enable = true; nssmdns4 = true; publish.enable = true; publish.addresses = true; };
     services.tailscale.enable = true;
@@ -39,8 +44,13 @@ in {
       isNormalUser = true;
       home = "/var/lib/codex";
       createHome = true;
+      openssh.authorizedKeys.keyFiles = [ ./mindstorms6.keys ];
     };
-    users.users.admin = { isNormalUser = true; extraGroups = [ "wheel" ]; };
+    users.users.admin = {
+      isNormalUser = true;
+      extraGroups = [ "wheel" ];
+      openssh.authorizedKeys.keyFiles = [ ./mindstorms6.keys ];
+    };
     security.sudo.wheelNeedsPassword = false;
     systemd.tmpfiles.rules = [ "d /var/lib/appliance-keys 0755 root root -" ];
     environment.systemPackages = [ pkgs.codex pkgs.gitMinimal pkgs.ripgrep ];

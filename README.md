@@ -1,7 +1,7 @@
 # Codex appliance
 
 A headless NixOS SD-card image for the **Radxa ZERO 3W (RK3566, AIC8800)**.
-Includes Codex CLI, key-only SSH, Wi-Fi/BLE provisioning, Tailscale/Headscale,
+Includes Codex CLI, key-only SSH over Tailscale, Wi-Fi/BLE provisioning, Tailscale/Headscale,
 and daily system updates. No desktop, default SSH password, or secrets in the
 flake. Use a good power supply and a 16 GB or larger microSD card.
 
@@ -47,10 +47,17 @@ expands on first boot. GitHub Actions also builds an image artifact on ARM64.
    approve the node using that deployment's enrollment flow. Tailscale identity
    persists under `/var/lib/tailscale`; DNS stays with the local network.
 
-Once provisioned, run `ssh codex@<hostname>.local` (or its LAN/Tailscale IP),
-then `codex`. Use `ssh admin@<hostname>.local` for maintenance with `sudo`.
-The SSH key is optional but needed for remote shell access. Codex
-runs as an unprivileged user; provisioning and updates run as system services.
+Once enrolled in Tailscale/Headscale, run `ssh codex@<tailscale-ip>`, then `codex`.
+Use `ssh admin@<tailscale-ip>` for maintenance with **passwordless `sudo`**.
+SSH ingress is allowed only on `tailscale0`, including IPv6; Wi-Fi and Ethernet
+cannot reach it. Use a tailnet DNS name instead of the IP if your deployment
+provides one. Codex runs as an unprivileged user; provisioning and updates run as
+system services.
+
+Both accounts accept the six public keys from [mindstorms6 on GitHub](https://github.com/mindstorms6.keys),
+snapshotted in `modules/mindstorms6.keys`. They are baked into the image; GitHub
+key changes require a repository update and release. The optional provisioning
+key adds access alongside these keys.
 
 First setup trusts nearby users: the initial AP password is public and BLE uses
 encrypted Just Works pairing. Provision in a trusted place. After the first
