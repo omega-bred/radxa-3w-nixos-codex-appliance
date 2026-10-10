@@ -89,8 +89,9 @@ in {
     system.autoUpgrade = {
       enable = true;
       flake = cfg.updateFlake;
+      upgrade = false;
       flags = [ "--refresh" ];
-      dates = "daily";
+      dates = "03:15";
       randomizedDelaySec = "1h";
       persistent = true;
       allowReboot = true;
