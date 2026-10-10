@@ -151,6 +151,7 @@ class Appliance:
                 # a symlink while the privileged provisioner writes public keys.
                 for user in ("codex", "admin"):
                     atomic(Path("/var/lib/appliance-keys") / user, key + "\n", mode=0o644)
+            run("systemctl", "try-restart", "avahi-daemon.service", check=False)
         except (ValueError, OSError, subprocess.TimeoutExpired) as exc:
             self.error = str(exc) if isinstance(exc, ValueError) else "Could not apply settings"
             if not joined:

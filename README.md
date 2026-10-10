@@ -33,8 +33,8 @@ expands on first boot. GitHub Actions also builds an image artifact on ARM64.
    python3 -m http.server 8000 --directory provision
    ```
 
-   Open http://localhost:8000 in a Web Bluetooth browser (for example Chromium
-   on Windows/ChromeOS or Chrome on Android), click **Connect over Bluetooth**,
+   Open http://localhost:8000 on that laptop in a Web Bluetooth browser (for
+   example Chrome on macOS/Windows), click **Connect over Bluetooth**,
    pair when prompted, and enter the saved token. You can also do the entire
    first setup over BLE. Web Bluetooth needs a secure context; the hotspot's
    HTTP page supports Wi-Fi setup, while localhost enables BLE.
