@@ -11,7 +11,7 @@
   hardware.enableRedistributableFirmware = true;
   hardware.deviceTree = {
     enable = true;
-    filter = "rockchip/rk3566-radxa-zero-3w.dtb";
+    filter = "rk3566-radxa-zero-3w.dtb";
     overlays = [ { name = "headless-bluetooth"; dtsFile = ./headless-bluetooth.dts; } ];
   };
   sdImage = {
