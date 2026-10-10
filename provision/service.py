@@ -322,7 +322,7 @@ def serve_ble(appliance):
                 "UUID": COMMAND_UUID, "Service": dbus.ObjectPath(root + "/service"),
                 "Flags": dbus.Array(["read", "write", "encrypt-read", "encrypt-write"], signature="s"),
             })
-            self.buffers, self.responses = {}, {}
+            self.buffers, self.responses, self.cursors = {}, {}, {}
 
         @dbus.service.method(gatt + "Characteristic1", in_signature="aya{sv}", out_signature="")
         def WriteValue(self, value, options):
@@ -332,16 +332,22 @@ def serve_ble(appliance):
                 self.buffers.pop(device, None)
                 raise dbus.exceptions.DBusException("Request too large", name="org.bluez.Error.InvalidValueLength")
             if buffer.endswith(b"\n"):
-                self.responses[device] = json.dumps(respond(appliance, buffer)).encode()
+                self.responses[device] = json.dumps(respond(appliance, buffer), separators=(",", ":")).encode() + b"\n"
+                self.cursors[device] = 0
                 self.buffers.pop(device, None)
             else:
                 self.buffers[device] = buffer
 
         @dbus.service.method(gatt + "Characteristic1", in_signature="a{sv}", out_signature="ay")
         def ReadValue(self, options):
-            data = self.responses.get(str(options["device"]), b'{"message":"Write newline-terminated JSON first"}')
-            offset, mtu = int(options.get("offset", 0)), int(options.get("mtu", 23))
-            return dbus.Array(data[offset:offset + mtu - 1], signature="y")
+            device = str(options["device"])
+            data = self.responses.get(device, b'{"message":"Write newline-terminated JSON first"}\n')
+            offset = self.cursors.get(device, 0)
+            # Each ATT value is short; repeat reads until newline. This works
+            # for login output larger than GATT's 512-byte attribute limit.
+            size = min(180, int(options.get("mtu", 23)) - 2)
+            self.cursors[device] = offset + size
+            return dbus.Array(data[offset:offset + size], signature="y")
 
     class Application(dbus.service.Object):
         @dbus.service.method("org.freedesktop.DBus.ObjectManager", out_signature="a{oa{sa{sv}}}")
@@ -409,6 +415,7 @@ def serve_ble(appliance):
             if interface == "org.bluez.Device1" and not changed.get("Connected", True):
                 command.buffers.pop(str(path), None)
                 command.responses.pop(str(path), None)
+                command.cursors.pop(str(path), None)
         bus.add_signal_receiver(changed, signal_name="PropertiesChanged", dbus_interface=properties, path_keyword="path")
         bus.add_signal_receiver(lambda *args: loop.quit(), signal_name="NameOwnerChanged", dbus_interface="org.freedesktop.DBus", arg0="org.bluez")
         loop.run()

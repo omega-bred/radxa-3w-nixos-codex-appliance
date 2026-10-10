@@ -62,8 +62,8 @@ Wi-Fi supports open networks and WPA2 Personal (including WPA2/WPA3 mixed mode).
 
 Service UUID: `d93f0001-7b2c-4e2a-9e74-41c868b36f90`.
 Read/write characteristic: `d93f0002-7b2c-4e2a-9e74-41c868b36f90`.
-Send UTF-8 JSON ending in a newline, in chunks of at most 180 bytes, then read
-the JSON response (long reads supported). Responses belong to the connected
+Send UTF-8 JSON ending in a newline in 20-byte chunks, then repeat characteristic
+reads until the response ends in a newline. Responses belong to the connected
 device. Pairing is required; requests are limited to 4096 bytes.
 
 ```json

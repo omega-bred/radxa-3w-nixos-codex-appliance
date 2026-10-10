@@ -53,8 +53,14 @@ async function send(data){
   let response;
   if(characteristic){
     const payload=new TextEncoder().encode(JSON.stringify(data)+'\n');
-    for(let offset=0;offset<payload.length;offset+=180)await characteristic.writeValueWithResponse(payload.slice(offset,offset+180));
-    response=JSON.parse(new TextDecoder().decode(await characteristic.readValue()));
+    for(let offset=0;offset<payload.length;offset+=20)await characteristic.writeValueWithResponse(payload.slice(offset,offset+20));
+    let text='';
+    while(!text.endsWith('\n')){
+      const part=new TextDecoder().decode(await characteristic.readValue());
+      if(!part||text.length>16384)throw Error('Incomplete Bluetooth response; retry the request.');
+      text+=part;
+    }
+    response=JSON.parse(text);
   }else{
     response=await (await fetch('/api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)})).json();
   }

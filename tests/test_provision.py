@@ -1,10 +1,11 @@
 import json
 from pathlib import Path
 import tempfile
+import types
 import unittest
 from unittest.mock import patch
 
-from provision.service import Appliance, atomic, respond, validate, wifi_profile
+from provision.service import Appliance, atomic, respond, serve_ble, validate, wifi_profile
 
 
 class ProvisioningTests(unittest.TestCase):
@@ -107,6 +108,63 @@ class ProvisioningTests(unittest.TestCase):
     def test_malformed_requests_and_validation_errors(self):
         for body in (b"not-json", b"[]", b'"string"', b'{"op":"configure","ssh_key":null}'):
             self.assertIn("error", respond(self.device, body))
+
+    def test_ble_frames_large_login_output_and_isolates_peers(self):
+        # A minimal BlueZ bus exercises the exported methods without radios.
+        objects, signals = {}, {}
+        class Object:
+            def __init__(self, bus, path):
+                objects[path] = self
+        class Error(Exception):
+            def __init__(self, message, name=None):
+                super().__init__(message)
+        bus = types.SimpleNamespace(get_object=lambda *args: None, close=lambda: None,
+                                    add_signal_receiver=lambda fn, **kw: signals.update({kw["signal_name"]: fn}))
+        adapter = {"/org/bluez/hci0": {"org.bluez.GattManager1": {}, "org.bluez.LEAdvertisingManager1": {}}}
+        manager = types.SimpleNamespace(GetManagedObjects=lambda: adapter, Set=lambda *args: None,
+            RegisterAgent=lambda *args: None, RequestDefaultAgent=lambda *args: None,
+            RegisterApplication=lambda *args, **kw: kw["reply_handler"](),
+            RegisterAdvertisement=lambda *args, **kw: kw["reply_handler"]())
+        dbus = types.ModuleType("dbus")
+        service = types.ModuleType("dbus.service")
+        service.Object, service.method = Object, lambda *args, **kw: lambda fn: fn
+        dbus.service = service
+        dbus.SystemBus, dbus.Interface = lambda **kw: bus, lambda *args: manager
+        dbus.ObjectPath, dbus.Boolean, dbus.UInt32 = str, bool, int
+        dbus.Array = lambda value, **kw: list(value)
+        dbus.exceptions = types.SimpleNamespace(DBusException=Error)
+        glib = types.ModuleType("dbus.mainloop.glib")
+        glib.DBusGMainLoop = lambda **kw: None
+        repository = types.ModuleType("gi.repository")
+        def exercise():
+            command = objects["/com/codex/provision/service/command"]
+            def read(peer):
+                output = b""
+                while not output.endswith(b"\n"):
+                    chunk = bytes(command.ReadValue({"device": peer, "mtu": 23}))
+                    self.assertTrue(chunk)
+                    self.assertLess(len(chunk), 22)  # Short ATT reply, no Read Blob.
+                    output += chunk
+                return output
+            payload = b'{"op":"status","token":"secret"}\n'
+            for offset in range(0, len(payload), 20):
+                command.WriteValue(list(payload[offset:offset + 20]), {"device": "owner"})
+            response = read("owner")
+            self.assertGreater(len(response), 512)
+            self.assertEqual(json.loads(response)["login_output"]["codex"], "x" * 1200)
+            self.assertNotIn("login_output", json.loads(read("other")))
+            signals["PropertiesChanged"]("org.bluez.Device1", {"Connected": False}, [], path="owner")
+            self.assertNotIn("login_output", json.loads(read("owner")))
+            with self.assertRaises(Error):
+                command.WriteValue(list(b"x" * 4097), {"device": "other"})
+            self.assertNotIn("other", command.buffers)
+        repository.GLib = types.SimpleNamespace(MainLoop=lambda: types.SimpleNamespace(run=exercise, quit=lambda: None))
+        modules = {"dbus": dbus, "dbus.service": service, "dbus.mainloop": types.ModuleType("dbus.mainloop"),
+                   "dbus.mainloop.glib": glib, "gi": types.ModuleType("gi"), "gi.repository": repository}
+        self.device.config.update(token="secret", wifi_configured=True)
+        self.device.outputs["codex"] = "x" * 1200
+        with patch.dict("sys.modules", modules), patch("provision.service.run", return_value="{}"):
+            serve_ble(self.device)
 
 
 if __name__ == "__main__":
