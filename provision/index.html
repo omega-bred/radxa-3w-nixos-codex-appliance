@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Codex setup</title>
+<style>
+body{font:16px system-ui;max-width:34rem;margin:3rem auto;padding:0 1rem;color:#202522;background:#f5f6f1}
+label{display:block;margin:1rem 0}input,button{font:inherit;box-sizing:border-box;padding:.7rem;width:100%;border:1px solid #a3aba1;border-radius:5px}
+button{background:#244b36;color:white;cursor:pointer}pre{white-space:pre-wrap;overflow-wrap:anywhere}small{color:#4d584e}
+</style>
+<h1>Set up Codex</h1>
+<button id="bluetooth" type="button">Connect over Bluetooth</button>
+<p id="transport"><small>Wi-Fi setup works on this hotspot. For BLE, open this page from localhost in a browser with Web Bluetooth.</small></p>
+<p>Connect this appliance to Wi-Fi. Save the provisioning token below: you’ll need it for future changes over Bluetooth.</p>
+<form id="setup">
+<label>Hostname<input name="hostname" value="codex" required maxlength="63" pattern="[a-z0-9][a-z0-9-]*"></label>
+<label>Wi-Fi name<input name="ssid" required maxlength="32" autocomplete="off"></label>
+<label>Wi-Fi password<input name="password" type="password" autocomplete="new-password"><small>Leave empty for an open network.</small></label>
+<label>SSH public key (optional)<input name="ssh_key" placeholder="ssh-ed25519 …" autocomplete="off"><small>Enables access as codex and the admin maintenance account.</small></label>
+<label>Provisioning token (if already claimed)<input id="token" type="password" autocomplete="off"></label>
+<button>Save and connect</button>
+</form>
+<pre id="result" role="status"></pre>
+<p>The setup hotspot turns off after Wi-Fi connects. Continue over BLE to finish device login.</p>
+<button id="login" type="button">Sign in to Codex</button>
+<label>Tailscale control server<input id="server" type="url" value="https://controlplane.tailscale.com"><small>Use your Headscale URL for a custom deployment.</small></label>
+<label>Tailscale device name (optional)<input id="tailname" placeholder="Use system hostname"></label>
+<button id="tailscale" type="button">Connect Tailscale</button>
+<p><button id="status" type="button">Refresh status and login links</button></p>
+<script>
+const token=document.querySelector('#token'),result=document.querySelector('#result');
+let characteristic;
+token.value=localStorage.getItem('codex-token')||'';
+const bluetooth=document.querySelector('#bluetooth');
+bluetooth.disabled=!navigator.bluetooth;
+bluetooth.onclick=async()=>{
+  try{
+    const service='d93f0001-7b2c-4e2a-9e74-41c868b36f90';
+    const device=await navigator.bluetooth.requestDevice({filters:[{services:[service]}]});
+    const connection=await device.gatt.connect();
+    characteristic=await (await connection.getPrimaryService(service)).getCharacteristic('d93f0002-7b2c-4e2a-9e74-41c868b36f90');
+    device.addEventListener('gattserverdisconnected',()=>{characteristic=null;result.textContent='Bluetooth disconnected. Reconnect to continue.';});
+    document.querySelector('#transport').textContent='Connected over Bluetooth. Pair when prompted.';
+  }catch(error){result.textContent=error.message;}
+};
+async function request(data){
+  data.token=token.value;
+  let response;
+  if(characteristic){
+    const payload=new TextEncoder().encode(JSON.stringify(data)+'\n');
+    for(let offset=0;offset<payload.length;offset+=180)await characteristic.writeValueWithResponse(payload.slice(offset,offset+180));
+    response=JSON.parse(new TextDecoder().decode(await characteristic.readValue()));
+  }else{
+    response=await (await fetch('/api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)})).json();
+  }
+  if(response.token){token.value=response.token;localStorage.setItem('codex-token',response.token);}
+  result.textContent=JSON.stringify(response,null,2);
+}
+for(const op of ['login','tailscale','status'])document.querySelector('#'+op).onclick=()=>{
+  const data={op};
+  if(op==='tailscale'){
+    data.login_server=document.querySelector('#server').value;
+    if(document.querySelector('#tailname').value)data.hostname=document.querySelector('#tailname').value;
+  }
+  request(data).catch(error=>{result.textContent=error.message;});
+};
+document.querySelector('#setup').onsubmit=async event=>{
+  event.preventDefault();
+  try{
+    await request({...Object.fromEntries(new FormData(event.target)),op:'configure'});
+  }catch(error){result.textContent='Connection lost. Keep your token and check Bluetooth for setup status.';}
+};
+</script>
+</html>

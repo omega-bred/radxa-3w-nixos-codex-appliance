@@ -1,0 +1,28 @@
+name: Check appliance
+on:
+  push:
+    branches: [main, stable]
+  pull_request:
+  workflow_dispatch:
+jobs:
+  check:
+    strategy:
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      - run: |
+          nix flake check
+          nix flake check --no-build --all-systems
+      - if: matrix.runner == 'ubuntu-24.04-arm'
+        run: nix build .#sdImage
+      - if: matrix.runner == 'ubuntu-24.04-arm'
+        uses: actions/upload-artifact@v4
+        with:
+          name: radxa-zero3w-sd-image
+          path: result/sd-image/*.img.zst
+          compression-level: 0

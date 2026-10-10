@@ -1,0 +1,4 @@
+/result*
+/work/
+__pycache__/
+*.pyc

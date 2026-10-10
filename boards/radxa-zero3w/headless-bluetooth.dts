@@ -1,0 +1,23 @@
+/dts-v1/;
+/plugin/;
+
+/ {
+    compatible = "radxa,zero-3w", "rockchip,rk3566";
+    fragment@0 {
+        target-path = "/firmware/scmi";
+        __overlay__ { status = "disabled"; };
+    };
+    fragment@1 {
+        target-path = "/gpu@fde60000";
+        __overlay__ { status = "disabled"; };
+    };
+    /* Mainline enables UART1 but leaves the AIC Bluetooth GPIOs unclaimed.
+       Keep the controller powered and awake; no vendor sleep driver needed. */
+    fragment@2 {
+        target = <&gpio0>;
+        __overlay__ {
+            bt-enable { gpio-hog; gpios = <17 0>; output-high; line-name = "bt-enable"; };
+            bt-wake { gpio-hog; gpios = <12 0>; output-high; line-name = "bt-wake"; };
+        };
+    };
+};
