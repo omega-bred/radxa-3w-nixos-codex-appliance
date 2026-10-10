@@ -9,7 +9,7 @@
   boot.kernelPackages = pkgs.linuxPackages_6_12;
   boot.kernelParams = [ "console=ttyS2,1500000n8" ];
   # The AIC module supplies its own firmware; skip unrelated PC/GPU bundles.
-  hardware.enableRedistributableFirmware = false;
+  hardware.enableRedistributableFirmware = lib.mkForce false;
   hardware.wirelessRegulatoryDatabase = true;
   hardware.deviceTree = {
     enable = true;
