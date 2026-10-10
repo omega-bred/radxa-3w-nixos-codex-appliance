@@ -44,6 +44,7 @@ in {
     security.sudo.wheelNeedsPassword = false;
     systemd.tmpfiles.rules = [ "d /var/lib/appliance-keys 0755 root root -" ];
     environment.systemPackages = [ pkgs.codex pkgs.gitMinimal pkgs.ripgrep ];
+    documentation.enable = false;
     nix.settings.experimental-features = [ "nix-command" "flakes" ];
     nix.gc = { automatic = true; dates = "weekly"; options = "--delete-older-than 14d"; };
     boot.loader.generic-extlinux-compatible.configurationLimit = 3;

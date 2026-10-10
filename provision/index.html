@@ -42,7 +42,13 @@ bluetooth.onclick=async()=>{
     document.querySelector('#transport').textContent='Connected over Bluetooth. Pair when prompted.';
   }catch(error){result.textContent=error.message;}
 };
-async function request(data){
+let queue=Promise.resolve();
+function request(data){
+  const next=queue.then(()=>send(data));
+  queue=next.catch(()=>{});
+  return next;
+}
+async function send(data){
   data.token=token.value;
   let response;
   if(characteristic){

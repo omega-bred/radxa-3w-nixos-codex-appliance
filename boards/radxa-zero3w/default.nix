@@ -8,7 +8,9 @@
   boot.loader.generic-extlinux-compatible.enable = true;
   boot.kernelPackages = pkgs.linuxPackages_6_12;
   boot.kernelParams = [ "console=ttyS2,1500000n8" ];
-  hardware.enableRedistributableFirmware = true;
+  # The AIC module supplies its own firmware; skip unrelated PC/GPU bundles.
+  hardware.enableRedistributableFirmware = false;
+  hardware.wirelessRegulatoryDatabase = true;
   hardware.deviceTree = {
     enable = true;
     filter = "rk3566-radxa-zero-3w.dtb";
