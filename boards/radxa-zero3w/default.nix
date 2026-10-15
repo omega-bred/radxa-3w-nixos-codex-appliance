@@ -3,6 +3,15 @@
   imports = [ "${modulesPath}/installer/sd-card/sd-image.nix" ./wireless.nix ];
   nixpkgs.hostPlatform = "aarch64-linux";
   nixpkgs.config.allowUnfreePredicate = pkg: builtins.elem (lib.getName pkg) [ "rkbin" "rkbin-unstable" ];
+  # BlueZ 5.84 uses the legacy header size for extended advertising data.
+  # Linux 6.12's length validation rejects the resulting eight padding bytes.
+  nixpkgs.overlays = [ (_final: prev: {
+    # Update the CLI independently of the board's pinned kernel and drivers.
+    codex = prev.callPackage ../../packages/codex { };
+    bluez = prev.bluez.overrideAttrs (old: {
+      patches = (old.patches or []) ++ [ ./bluez-advertising-length.patch ];
+    });
+  }) ];
   networking.usePredictableInterfaceNames = false;
   boot.loader.grub.enable = false;
   boot.loader.generic-extlinux-compatible.enable = true;

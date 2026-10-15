@@ -52,7 +52,11 @@ in {
       openssh.authorizedKeys.keyFiles = [ ./mindstorms6.keys ];
     };
     security.sudo.wheelNeedsPassword = false;
-    systemd.tmpfiles.rules = [ "d /var/lib/appliance-keys 0755 root root -" ];
+    systemd.tmpfiles.rules = [
+      "d /var/lib/appliance-keys 0755 root root -"
+      # An explicit CODEX_HOME must exist before the first device login.
+      "d /var/lib/codex/.codex 0700 codex ${config.users.users.codex.group} -"
+    ];
     environment.systemPackages = [ pkgs.codex pkgs.gitMinimal pkgs.ripgrep ];
     documentation.enable = false;
     nix.settings.experimental-features = [ "nix-command" "flakes" ];

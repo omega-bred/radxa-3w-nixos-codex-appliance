@@ -18,6 +18,49 @@ ADDRESS = "10.42.0.1"
 SERVICE_UUID = "d93f0001-7b2c-4e2a-9e74-41c868b36f90"
 COMMAND_UUID = "d93f0002-7b2c-4e2a-9e74-41c868b36f90"
 HOSTNAME = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+
+
+def login_status(name, output, exit_code, started, complete=False, auth_url=""):
+    """Extract actionable sign-in details while retaining CLI output for diagnostics."""
+    if complete:
+        return {"state": "complete"}
+    output = ANSI.sub("", output).replace("\r", "")
+    details = {}
+    if name == "codex":
+        link = re.search(r"https://auth\.openai\.com/codex/device\b(?:\?[^\s]*)?", output)
+        code = re.search(r"Enter this one-time code[^\n]*\n\s*([A-Z0-9]+(?:-[A-Z0-9]+)+)", output)
+        if link and code:
+            details = {"url": link[0], "code": code[1]}
+            expiry = re.search(r"expires in (\d+) minutes", output)
+            if expiry:
+                details["expires_in_minutes"] = int(expiry[1])
+    else:
+        # `tailscale up --json` emits consecutive, pretty-printed JSON objects.
+        if not auth_url:
+            decoder, cursor = json.JSONDecoder(), 0
+            while (cursor := output.find("{", cursor)) != -1:
+                try:
+                    event, length = decoder.raw_decode(output[cursor:])
+                    cursor += length
+                    if isinstance(event, dict) and event.get("AuthURL"):
+                        auth_url = event["AuthURL"]
+                except ValueError:
+                    cursor += 1
+        if isinstance(auth_url, str):
+            try:
+                url = urlsplit(auth_url)
+                if (url.scheme in ("http", "https") and url.hostname and not url.username and not url.password
+                        and not any(ord(c) <= 32 for c in auth_url)):
+                    details["url"] = auth_url
+            except ValueError:
+                pass
+    if started and exit_code is not None and exit_code != 0:
+        lines = [line.strip() for line in output.splitlines() if line.strip()]
+        return {"state": "error", "message": lines[-1][:512] if lines else "Sign-in stopped. Try again."}
+    if details:
+        return {"state": "waiting", **details}
+    return {"state": "starting" if started and exit_code is None else "idle"}
 
 
 def run(*args, check=True):
@@ -177,7 +220,7 @@ class Appliance:
             for line in process.stdout:
                 with self.lock:
                     if '"QR":' not in line:
-                        self.outputs[name] = (self.outputs[name] + line)[-4096:]
+                        self.outputs[name] = (self.outputs[name] + ANSI.sub("", line).replace("\r", ""))[-4096:]
             process.wait()
         threading.Thread(target=collect, daemon=True).start()
 
@@ -226,10 +269,19 @@ class Appliance:
                 tail = {key: tail.get(key) for key in ("BackendState", "TailscaleIPs", "AuthURL")}
             except (ValueError, OSError, subprocess.TimeoutExpired):
                 tail = {"BackendState": "Unavailable"}
+            exits = {name: process.poll() for name, process in self.processes.items()}
+            credentials_present = auth.exists()
+            sign_in = {
+                "codex": login_status("codex", self.outputs.get("codex", ""), exits.get("codex"),
+                    "codex" in self.processes, complete=credentials_present),
+                "tailscale": login_status("tailscale", self.outputs.get("tailscale", ""), exits.get("tailscale"),
+                    "tailscale" in self.processes, complete=tail.get("BackendState") == "Running",
+                    auth_url=tail.get("AuthURL", "")),
+            }
             return {"hostname": self.config.get("hostname", Path("/proc/sys/kernel/hostname").read_text().strip()),
                     "wifi_configured": bool(self.config.get("wifi_configured")), "busy": self.busy, "error": self.error,
-                    "codex_credentials_present": auth.exists(), "login_output": dict(self.outputs),
-                    "login_exit": {name: process.poll() for name, process in self.processes.items()}, "tailscale": tail}
+                    "codex_credentials_present": credentials_present, "login_output": dict(self.outputs),
+                    "login_exit": exits, "login_status": sign_in, "tailscale": tail}
 
 
 def respond(appliance, payload):

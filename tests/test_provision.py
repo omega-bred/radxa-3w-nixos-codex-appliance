@@ -5,7 +5,7 @@ import types
 import unittest
 from unittest.mock import patch
 
-from provision.service import Appliance, atomic, respond, serve_ble, validate, wifi_profile
+from provision.service import Appliance, atomic, login_status, respond, serve_ble, validate, wifi_profile
 
 
 class ProvisioningTests(unittest.TestCase):
@@ -108,6 +108,36 @@ class ProvisioningTests(unittest.TestCase):
     def test_malformed_requests_and_validation_errors(self):
         for body in (b"not-json", b"[]", b'"string"', b'{"op":"configure","ssh_key":null}'):
             self.assertIn("error", respond(self.device, body))
+
+    def test_codex_login_details_strip_terminal_colors(self):
+        output = ("Open \x1b[94mhttps://auth.openai.com/codex/device\x1b[0m\n\n"
+                  "Enter this one-time code \x1b[90m(expires in 15 minutes)\x1b[0m\n"
+                  "  \x1b[94mABCD-EFGHI\x1b[0m\n")
+        self.assertEqual(login_status("codex", output, None, True), {
+            "state": "waiting", "url": "https://auth.openai.com/codex/device",
+            "code": "ABCD-EFGHI", "expires_in_minutes": 15,
+        })
+        self.assertEqual(login_status("codex", output, 0, True, complete=True), {"state": "complete"})
+        failed = login_status("codex", output + "Error: device code expired\n", 1, True)
+        self.assertEqual(failed, {"state": "error", "message": "Error: device code expired"})
+        self.assertEqual(login_status("codex", "", None, True), {"state": "starting"})
+
+    def test_tailscale_login_links_and_completed_status(self):
+        url = "https://headscale.example.com/register/example"
+        output = json.dumps({"AuthURL": url, "BackendState": "NeedsLogin"}, indent=2) + "\n"
+        output += json.dumps({"BackendState": "Running"}, indent=2)
+        self.assertEqual(login_status("tailscale", output, None, True), {"state": "waiting", "url": url})
+        self.assertEqual(login_status("tailscale", output, 0, True, complete=True), {"state": "complete"})
+        for invalid in ("javascript:alert(1)", "https://user:secret@example.com", "https://example.com/\n"):
+            with self.subTest(url=invalid):
+                self.assertNotIn("url", login_status("tailscale", "", None, True, auth_url=invalid))
+
+    def test_status_retires_old_login_links_after_authentication(self):
+        self.device.outputs["tailscale"] = json.dumps({"AuthURL": "https://headscale.example.com/old"})
+        with patch("provision.service.Path.exists", return_value=True), patch(
+                "provision.service.run", return_value=json.dumps({"BackendState": "Running"})):
+            response = self.device.request({"op": "status"})
+        self.assertEqual(response["login_status"], {"codex": {"state": "complete"}, "tailscale": {"state": "complete"}})
 
     def test_ble_frames_large_login_output_and_isolates_peers(self):
         # A minimal BlueZ bus exercises the exported methods without radios.

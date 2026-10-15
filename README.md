@@ -5,6 +5,10 @@ Includes Codex CLI, key-only SSH over Tailscale, Wi-Fi/BLE provisioning, Tailsca
 and daily system updates. No desktop, default SSH password, or secrets in the
 flake. Use a good power supply and a 16 GB or larger microSD card.
 
+The board pins Codex CLI **0.163.0** from OpenAI's ARM64 Linux release, including
+`codex remote-control`. Its version and download hash are in
+`packages/codex/default.nix`, independent of the NixOS kernel and driver pin.
+
 ## Build and boot
 
 On an ARM64 Linux Nix builder (or an x86 builder with aarch64 binfmt):
@@ -38,14 +42,20 @@ expands on first boot. GitHub Actions also builds an image artifact on ARM64.
    pair when prompted, and enter the saved token. You can also do the entire
    first setup over BLE. Web Bluetooth needs a secure context; the hotspot's
    HTTP page supports Wi-Fi setup, while localhost enables BLE.
-4. Click **Sign in to Codex**, then **Refresh status and login links**. Open the
-   returned device-login URL on your phone/laptop and enter the code. Device
+4. Click **Sign in to Codex**. The Codex panel shows an **Open ChatGPT sign-in**
+   link and a **Copy code** button. Open the link on your phone/laptop and enter
+   the code; the panel refreshes automatically until sign-in completes. Device
    authorization must be enabled for your ChatGPT account. Credentials stay in
    `/var/lib/codex/.codex`, owned by the `codex` user.
-5. Click **Connect Tailscale**, refresh status and open its enrollment URL. For
-   Headscale, enter your control-server URL and optional device name first;
-   approve the node using that deployment's enrollment flow. Tailscale identity
+5. Click **Connect Tailscale**, then **Open device registration** when the link
+   appears. For Headscale, enter your control-server URL and optional device
+   name first; approve the node using that deployment's enrollment flow. The
+   panel shows **Connected** and the SSH address when ready. Tailscale identity
    persists under `/var/lib/tailscale`; DNS stays with the local network.
+
+Use **Refresh status** to check again at any time. The **Recovery token** section
+lets you copy the token saved in this browser or enter one from another browser.
+Raw CLI output and exit codes remain available under **Diagnostics**.
 
 Once enrolled in Tailscale/Headscale, run `ssh codex@<tailscale-ip>`, then `codex`.
 Use `ssh admin@<tailscale-ip>` for maintenance with **passwordless `sudo`**.

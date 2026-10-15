@@ -3,50 +3,146 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Codex setup</title>
 <style>
-body{font:16px system-ui;max-width:34rem;margin:3rem auto;padding:0 1rem;color:#202522;background:#f5f6f1}
-label{display:block;margin:1rem 0}input,button{font:inherit;box-sizing:border-box;padding:.7rem;width:100%;border:1px solid #a3aba1;border-radius:5px}
-button{background:#244b36;color:white;cursor:pointer}pre{white-space:pre-wrap;overflow-wrap:anywhere}small{color:#4d584e}
+:root{font:16px system-ui;color:#202522;background:#f5f6f1}*{box-sizing:border-box}body{max-width:40rem;margin:2.5rem auto;padding:0 1rem}h1{margin:0 0 .4rem;font-size:2rem}h2{font-size:1.15rem;margin:0}p{line-height:1.5}small,.muted{color:#58625a}.intro{margin-top:0}.card{background:#fff;border:1px solid #d8ded5;border-radius:12px;padding:1.3rem;margin:1rem 0}.heading{display:flex;align-items:center;justify-content:space-between;gap:1rem}.badge{font-size:.8rem;padding:.25rem .65rem;background:#edf0e9;border-radius:20px;white-space:nowrap}.badge[data-state=complete]{background:#e3f0df;color:#254c26}.badge[data-state=error]{background:#fbe9e1;color:#883a22}label{display:block;margin:1rem 0}input,button,.action{font:inherit;border-radius:6px;padding:.7rem .85rem}input{width:100%;border:1px solid #a3aba1;margin-top:.35rem}button,.action{display:inline-block;background:#244b36;color:#fff;border:1px solid #244b36;cursor:pointer;text-decoration:none;text-align:center}button:disabled{opacity:.55;cursor:default}button.secondary{background:#fff;color:#244b36;border-color:#a3aba1}button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid #648951;outline-offset:3px}.actions{display:flex;align-items:center;flex-wrap:wrap;gap:.6rem}.code-row{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin:.8rem 0}.device-code{font:600 1.5rem ui-monospace,monospace;letter-spacing:.08em;padding:.65rem .9rem;background:#f0f3ec;border:1px solid #d8ded5;border-radius:6px;user-select:all}.copy-feedback{font-size:.85rem;color:#58625a}summary{cursor:pointer;color:#244b36}details{margin-top:1rem}details[open]>summary{margin-bottom:1rem}pre{font-size:.8rem;white-space:pre-wrap;overflow-wrap:anywhere;background:#eef1e9;padding:1rem;border-radius:6px}#notice:empty{display:none}#notice{padding:.8rem 1rem;border-left:3px solid #648951;background:#edf0e9}#notice[data-error=true]{border-color:#a84627;background:#fbe9e1}#transport{margin:.75rem 0 0;font-size:.9rem}#refresh-note{font-size:.85rem;color:#58625a}.privacy{font-size:.85rem;color:#58625a}[hidden]{display:none!important}@media(max-width:480px){body{margin:1.5rem auto}.card{padding:1rem}.heading{gap:.5rem}.device-code{font-size:1.3rem}}
 </style>
-<h1>Set up Codex</h1>
-<button id="bluetooth" type="button">Connect over Bluetooth</button>
-<p id="transport"><small>Wi-Fi setup works on this hotspot. For BLE, open this page from localhost in a browser with Web Bluetooth.</small></p>
-<p>Connect this appliance to Wi-Fi. Save the provisioning token below: you’ll need it for future changes over Bluetooth.</p>
-<form id="setup">
-<label>Hostname<input name="hostname" value="codex" required maxlength="63" pattern="[a-z0-9][a-z0-9-]*"></label>
-<label>Wi-Fi name<input name="ssid" required maxlength="32" autocomplete="off"></label>
-<label>Wi-Fi password<input name="password" type="password" autocomplete="new-password"><small>Leave empty for an open network.</small></label>
-<label>SSH public key (optional)<input name="ssh_key" placeholder="ssh-ed25519 …" autocomplete="off"><small>Enables access as codex and the admin maintenance account.</small></label>
-<label>Provisioning token (if already claimed)<input id="token" type="password" autocomplete="off"></label>
-<button>Save and connect</button>
-</form>
-<pre id="result" role="status"></pre>
-<p>The setup hotspot turns off after Wi-Fi connects. Continue over BLE to finish device login.</p>
-<button id="login" type="button">Sign in to Codex</button>
-<label>Tailscale control server<input id="server" type="url" value="https://controlplane.tailscale.com"><small>Use your Headscale URL for a custom deployment.</small></label>
-<label>Tailscale device name (optional)<input id="tailname" placeholder="Use system hostname"></label>
-<button id="tailscale" type="button">Connect Tailscale</button>
-<p><button id="status" type="button">Refresh status and login links</button></p>
+<header><h1>Set up Codex</h1><p class="intro muted">Connect your appliance, then sign in to the services you use.</p></header>
+<section class="card" aria-label="Appliance connection">
+  <div class="actions"><button id="bluetooth" type="button">Connect over Bluetooth</button><button id="status" class="secondary" type="button">Refresh status</button></div>
+  <p id="transport" role="status">Connect over Bluetooth to continue. Your laptop can stay on its current Wi-Fi network.</p>
+</section>
+<p id="notice" role="status"></p>
+<section class="card">
+  <div class="heading"><h2>1. Wi-Fi</h2><span id="wifi-state" class="badge">Not checked</span></div>
+  <p id="wifi-message">Give the appliance an internet connection to start sign-in.</p>
+  <details id="wifi-settings" open><summary>Wi-Fi settings</summary>
+    <form id="setup">
+      <label>Hostname<input name="hostname" value="codex" required maxlength="63" pattern="[a-z0-9][a-z0-9-]*"></label>
+      <label>Wi-Fi name<input name="ssid" required maxlength="32" autocomplete="off"></label>
+      <label>Wi-Fi password<input name="password" type="password" autocomplete="new-password"><small>Leave empty for an open network.</small></label>
+      <label>SSH public key (optional)<input name="ssh_key" placeholder="ssh-ed25519 …" autocomplete="off"><small>Enables access as codex and the admin maintenance account.</small></label>
+      <button id="save-wifi">Save and connect</button>
+    </form>
+  </details>
+</section>
+<section class="card" aria-labelledby="codex-title">
+  <div class="heading"><h2 id="codex-title">2. Codex</h2><span id="codex-state" class="badge">Not checked</span></div>
+  <p id="codex-message" role="status">Sign in with your ChatGPT account after Wi-Fi is connected.</p>
+  <div id="codex-prompt" hidden>
+    <p>Open the sign-in page, then enter this one-time code:</p>
+    <div class="code-row"><code id="codex-code" class="device-code"></code><button id="copy-code" type="button" class="secondary">Copy code</button><span id="code-copy-feedback" class="copy-feedback" role="status"></span></div>
+    <p id="codex-expiry" class="privacy"></p>
+    <p><a id="codex-link" class="action" target="_blank" rel="noopener noreferrer">Open ChatGPT sign-in ↗</a></p>
+    <p class="privacy">Only enter this code on the OpenAI page you open here. Keep it private.</p>
+  </div>
+  <button id="login" type="button">Sign in to Codex</button>
+</section>
+<section class="card" aria-labelledby="tailscale-title">
+  <div class="heading"><h2 id="tailscale-title">3. Tailscale / Headscale</h2><span id="tailscale-state" class="badge">Not checked</span></div>
+  <p id="tailscale-message" role="status">Connect for private SSH access to the appliance.</p>
+  <p id="tailscale-prompt" hidden><a id="tailscale-link" class="action" target="_blank" rel="noopener noreferrer">Open device registration ↗</a></p>
+  <p id="tailscale-address" hidden></p>
+  <details id="tailscale-settings" open><summary>Connection settings</summary>
+    <label>Tailscale control server<input id="server" type="url" value="https://controlplane.tailscale.com"><small>Use your Headscale URL for a custom deployment.</small></label>
+    <label>Tailscale device name (optional)<input id="tailname" placeholder="Use system hostname"></label>
+  </details>
+  <button id="tailscale" type="button">Connect Tailscale</button>
+</section>
+<p id="refresh-note" role="status"></p>
+<details class="card"><summary>Recovery token</summary>
+  <p class="muted">The token is saved in this browser. Keep a copy to manage this appliance from another browser.</p>
+  <label>Provisioning token<input id="token" type="password" autocomplete="off"></label>
+  <div class="actions"><button id="copy-token" class="secondary" type="button">Copy recovery token</button><span id="token-copy-feedback" class="copy-feedback" role="status"></span></div>
+</details>
+<details class="card"><summary>Diagnostics</summary><pre id="result">Connect and refresh to see device details.</pre></details>
 <script>
-const token=document.querySelector('#token'),result=document.querySelector('#result');
-let characteristic;
-token.value=localStorage.getItem('codex-token')||'';
-const bluetooth=document.querySelector('#bluetooth');
-bluetooth.disabled=!navigator.bluetooth;
-bluetooth.onclick=async()=>{
-  try{
-    const service='d93f0001-7b2c-4e2a-9e74-41c868b36f90';
-    const device=await navigator.bluetooth.requestDevice({filters:[{services:[service]}]});
-    const connection=await device.gatt.connect();
-    characteristic=await (await connection.getPrimaryService(service)).getCharacteristic('d93f0002-7b2c-4e2a-9e74-41c868b36f90');
-    device.addEventListener('gattserverdisconnected',()=>{characteristic=null;result.textContent='Bluetooth disconnected. Reconnect to continue.';});
-    document.querySelector('#transport').textContent='Connected over Bluetooth. Pair when prompted.';
-  }catch(error){result.textContent=error.message;}
-};
+const byId=id=>document.getElementById(id);
+const token=byId('token'),result=byId('result'),bluetooth=byId('bluetooth');
+const hotspot=location.hostname==='10.42.0.1';
+let characteristic,lastStatus,pollTimer,pollFailures=0,requestBusy=false;
 let queue=Promise.resolve();
-function request(data){
-  const next=queue.then(()=>send(data));
-  queue=next.catch(()=>{});
-  return next;
+try{token.value=localStorage.getItem('codex-token')||'';}catch{}
+bluetooth.disabled=!navigator.bluetooth;
+if(hotspot)byId('transport').textContent='Connected to the setup hotspot. Switch to Bluetooth to continue after Wi-Fi connects.';
+else if(!navigator.bluetooth)byId('transport').textContent='Use a browser with Web Bluetooth, such as Chrome, and open this page from localhost.';
+function notice(message,error=false){byId('notice').textContent=message;byId('notice').dataset.error=String(error);}
+function badge(id,label,state=''){byId(id).textContent=label;byId(id).dataset.state=state;}
+function safeLink(id,value){
+  try{const url=new URL(value);if(!['https:','http:'].includes(url.protocol)||url.username||url.password)throw Error();byId(id).href=url.href;return true;}
+  catch{byId(id).removeAttribute('href');return false;}
+}
+function connected(){return Boolean(characteristic)||hotspot;}
+function updateButtons(){
+  const wifi=Boolean(lastStatus&&lastStatus.wifi_configured);
+  byId('status').disabled=!connected()||requestBusy;
+  byId('save-wifi').disabled=!connected()||requestBusy||Boolean(lastStatus&&lastStatus.busy);
+  for(const [name,id] of [['codex','login'],['tailscale','tailscale']]){
+    const state=lastStatus?(lastStatus.login_status?.[name]||legacyLoginStatus(lastStatus,name)).state:undefined;
+    byId(id).disabled=!connected()||!wifi||requestBusy||['starting','waiting','complete'].includes(state);
+  }
+  byId('copy-token').disabled=!token.value;
+}
+function schedulePoll(delay=3000){
+  clearTimeout(pollTimer);
+  if(!connected())return;
+  byId('refresh-note').textContent='Checking sign-in status automatically…';
+  pollTimer=setTimeout(async()=>{
+    try{await request({op:'status'});pollFailures=0;}
+    catch(error){if(++pollFailures<3&&connected())schedulePoll(5000);else{notice(error.message,true);byId('refresh-note').textContent='Automatic checks paused. Refresh status to try again.';}}
+  },delay);
+}
+function legacyLoginStatus(data,name){
+  // A locally served page can be newer than the appliance's provisioning API.
+  if(name==='codex'?data.codex_credentials_present:data.tailscale?.BackendState==='Running')return{state:'complete'};
+  const output=String(data.login_output?.[name]||'').replace(/\x1b\[[0-?]*[ -/]*[@-~]/g,'').replace(/\r/g,'');
+  const exit=data.login_exit?.[name];
+  if(typeof exit==='number'&&exit!==0)return{state:'error',message:output.trim().split('\n').pop()||'Sign-in stopped. Try again.'};
+  let url,code,expiry;
+  if(name==='codex'){
+    url=output.match(/https:\/\/auth\.openai\.com\/codex\/device\b(?:\?[^\s]*)?/)?.[0];
+    code=output.match(/Enter this one-time code[^\n]*\n\s*([A-Z0-9]+(?:-[A-Z0-9]+)+)/)?.[1];
+    expiry=output.match(/expires in (\d+) minutes/)?.[1];
+  }else{
+    url=data.tailscale?.AuthURL;
+    if(!url){for(const match of output.matchAll(/"AuthURL"\s*:\s*("(?:\\.|[^"\\])*")/g)){try{url=JSON.parse(match[1])||url;}catch{}}}
+  }
+  if(url&&(name!=='codex'||code))return{state:'waiting',url,code,expires_in_minutes:expiry?Number(expiry):undefined};
+  return{state:exit===null?'starting':'idle'};
+}
+function renderStatus(data){
+  const previous=lastStatus;
+  lastStatus=data;
+  badge('wifi-state',data.busy?'Connecting…':data.wifi_configured?'Connected':'Not connected',data.wifi_configured?'complete':'');
+  byId('wifi-message').textContent=data.wifi_configured?'The appliance is connected to Wi-Fi.':data.busy?'Connecting the appliance to your network…':'Enter your Wi-Fi details below.';
+  if(data.wifi_configured&&!previous?.wifi_configured)byId('wifi-settings').open=false;
+  const states=data.login_status||{};
+  const codex=states.codex||legacyLoginStatus(data,'codex');
+  const tail=states.tailscale||legacyLoginStatus(data,'tailscale');
+  const labels={idle:'Not signed in',starting:'Starting…',waiting:'Waiting for you',complete:'Signed in',error:'Try again'};
+  badge('codex-state',labels[codex.state]||'Not signed in',codex.state);
+  byId('codex-message').textContent=codex.state==='complete'?'Signed in. Codex is ready to use on this appliance.':codex.state==='waiting'?'Finish sign-in in your browser. This page will update when you’re done.':codex.state==='starting'?'Requesting a device-login code…':codex.state==='error'?codex.message:'Sign in with your ChatGPT account. Your credentials stay on the appliance.';
+  const showCode=codex.state==='waiting'&&codex.code&&safeLink('codex-link',codex.url);
+  byId('codex-prompt').hidden=!showCode;
+  if(byId('codex-code').textContent!==(showCode?codex.code:''))byId('code-copy-feedback').textContent='';
+  byId('codex-code').textContent=showCode?codex.code:'';
+  byId('codex-expiry').textContent=codex.expires_in_minutes?'The code expires '+codex.expires_in_minutes+' minutes after it was issued.':'';
+  byId('login').hidden=codex.state==='complete'||Boolean(showCode);
+  byId('login').textContent=codex.state==='error'?'Try Codex sign-in again':'Sign in to Codex';
+  badge('tailscale-state',tail.state==='complete'?'Connected':labels[tail.state]||'Not connected',tail.state);
+  byId('tailscale-message').textContent=tail.state==='complete'?'Private access is connected.':tail.state==='waiting'?'Approve this device on your Tailscale or Headscale server.':tail.state==='starting'?'Starting device registration…':tail.state==='error'?tail.message:'Connect for private SSH access to the appliance.';
+  const showTail=tail.state==='waiting'&&safeLink('tailscale-link',tail.url);
+  byId('tailscale-prompt').hidden=!showTail;
+  const address=data.tailscale&&data.tailscale.TailscaleIPs&&data.tailscale.TailscaleIPs.find(ip=>!ip.includes(':'));
+  byId('tailscale-address').hidden=tail.state!=='complete'||!address;
+  byId('tailscale-address').textContent=address?'SSH: ssh codex@'+address:'';
+  byId('tailscale').hidden=tail.state==='complete'||Boolean(showTail);
+  byId('tailscale').textContent=tail.state==='error'?'Try connecting again':'Connect Tailscale';
+  if(tail.state==='complete'&&(!previous||(previous.login_status?.tailscale||legacyLoginStatus(previous,'tailscale')).state!=='complete'))byId('tailscale-settings').open=false;
+  const active=data.busy||[codex.state,tail.state].some(state=>['starting','waiting'].includes(state));
+  clearTimeout(pollTimer);
+  if(data.error)notice(data.error,true);
+  else notice('');
+  if(active)schedulePoll();else byId('refresh-note').textContent='';
+  updateButtons();
 }
 async function send(data){
   data.token=token.value;
@@ -57,29 +153,60 @@ async function send(data){
     let text='';
     while(!text.endsWith('\n')){
       const part=new TextDecoder().decode(await characteristic.readValue());
-      if(!part||text.length>16384)throw Error('Incomplete Bluetooth response; retry the request.');
+      if(!part||text.length>16384)throw Error('Incomplete Bluetooth response. Refresh status to try again.');
       text+=part;
     }
     response=JSON.parse(text);
-  }else{
-    response=await (await fetch('/api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)})).json();
-  }
-  if(response.token){token.value=response.token;localStorage.setItem('codex-token',response.token);}
-  result.textContent=JSON.stringify(response,null,2);
+  }else if(hotspot){
+    const reply=await fetch('/api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+    if(!reply.ok)throw Error('The appliance did not respond. Reconnect over Bluetooth to continue.');
+    response=await reply.json();
+  }else throw Error('Connect over Bluetooth to continue.');
+  const diagnostics={...response};delete diagnostics.token;
+  result.textContent=JSON.stringify(diagnostics,null,2);
+  if('wifi_configured' in response)renderStatus(response);
+  else if(response.error)throw Error(response.error);
+  if(response.token){token.value=response.token;try{localStorage.setItem('codex-token',response.token);}catch{}if(lastStatus)renderStatus({...lastStatus,busy:true});notice('Recovery token saved in this browser. Connecting to Wi-Fi…');schedulePoll(2000);}
+  return response;
 }
-for(const op of ['login','tailscale','status'])document.querySelector('#'+op).onclick=()=>{
-  const data={op};
-  if(op==='tailscale'){
-    data.login_server=document.querySelector('#server').value;
-    if(document.querySelector('#tailname').value)data.hostname=document.querySelector('#tailname').value;
-  }
-  request(data).catch(error=>{result.textContent=error.message;});
-};
-document.querySelector('#setup').onsubmit=async event=>{
-  event.preventDefault();
+function request(data){
+  const next=queue.then(async()=>{requestBusy=true;updateButtons();try{return await send(data);}finally{requestBusy=false;updateButtons();}});
+  queue=next.catch(()=>{});
+  return next;
+}
+bluetooth.onclick=async()=>{
+  bluetooth.disabled=true;
   try{
-    await request({...Object.fromEntries(new FormData(event.target)),op:'configure'});
-  }catch(error){result.textContent='Connection lost. Keep your token and check Bluetooth for setup status.';}
+    const service='d93f0001-7b2c-4e2a-9e74-41c868b36f90';
+    const device=await navigator.bluetooth.requestDevice({filters:[{services:[service]}]});
+    const connection=await device.gatt.connect();
+    characteristic=await(await connection.getPrimaryService(service)).getCharacteristic('d93f0002-7b2c-4e2a-9e74-41c868b36f90');
+    device.addEventListener('gattserverdisconnected',()=>{characteristic=null;clearTimeout(pollTimer);byId('transport').textContent='Bluetooth disconnected. Your settings are saved; reconnect to continue.';byId('refresh-note').textContent='';bluetooth.textContent='Reconnect Bluetooth';updateButtons();});
+    byId('transport').textContent='Connected over Bluetooth. Your laptop’s Wi-Fi is unchanged.';
+    bluetooth.textContent='Reconnect Bluetooth';notice('');pollFailures=0;
+    await request({op:'status'});
+  }catch(error){notice(error.message,true);}finally{bluetooth.disabled=!navigator.bluetooth;updateButtons();}
 };
+for(const op of ['login','tailscale','status'])byId(op).onclick=async()=>{
+  const data={op};
+  if(op==='tailscale'){data.login_server=byId('server').value;if(byId('tailname').value)data.hostname=byId('tailname').value;}
+  try{await request(data);}catch(error){notice(error.message,true);}
+};
+byId('setup').onsubmit=async event=>{
+  event.preventDefault();
+  try{await request({...Object.fromEntries(new FormData(event.target)),op:'configure'});}catch(error){notice(error.message,true);}
+};
+async function copyText(text,feedback){
+  try{
+    if(navigator.clipboard&&window.isSecureContext)await navigator.clipboard.writeText(text);
+    else{const input=document.createElement('textarea');input.value=text;input.style.position='fixed';input.style.opacity='0';document.body.append(input);input.select();const copied=document.execCommand('copy');input.remove();if(!copied)throw Error();}
+    byId(feedback).textContent='Copied';
+  }catch{byId(feedback).textContent='Copy unavailable. Select and copy the text.';}
+}
+byId('copy-code').onclick=()=>copyText(byId('codex-code').textContent,'code-copy-feedback');
+byId('copy-token').onclick=()=>copyText(token.value,'token-copy-feedback');
+token.addEventListener('input',updateButtons);
+updateButtons();
+if(hotspot)request({op:'status'}).catch(error=>notice(error.message,true));
 </script>
 </html>
