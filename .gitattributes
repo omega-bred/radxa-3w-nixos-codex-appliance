@@ -1,0 +1,2 @@
+# Unified diffs use a required space before tab-indented context lines.
+*.patch -whitespace
