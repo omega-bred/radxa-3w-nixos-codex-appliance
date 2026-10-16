@@ -120,6 +120,10 @@ The generic SoC's 1.8 GHz operating point is disabled to retain the ZERO 3W's
 [documented 1.6 GHz rating](https://docs.radxa.com/en/zero/zero3#features)
 (the 1.608 GHz operating point).
 
+Bluetooth startup checks for a configured controller through the kernel
+management API. If the UART attach process stays alive after an HCI timeout,
+systemd retries it. Local model loading starts after this radio check.
+
 ```sh
 nix flake check
 nix build .#sdImage --system aarch64-linux

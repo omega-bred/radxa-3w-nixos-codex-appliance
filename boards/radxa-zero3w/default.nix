@@ -59,10 +59,26 @@
     after = [ "systemd-modules-load.service" "dev-ttyS1.device" ];
     requires = [ "dev-ttyS1.device" ];
     before = [ "bluetooth.service" ];
+    # hciattach can remain alive after the controller's initial HCI commands
+    # time out. Check the kernel management API before declaring it ready;
+    # a failed attempt is stopped and retried by systemd.
+    postStart = ''
+      for attempt in $(${pkgs.coreutils}/bin/seq 1 15); do
+        # BlueZ's CLI needs pollable stdin; /dev/null under systemd hangs it.
+        if printf "" | ${pkgs.coreutils}/bin/timeout 2 ${pkgs.bluez}/bin/btmgmt info \
+          | ${pkgs.gnugrep}/bin/grep -E '^hci[0-9]+:[[:space:]]+Primary controller' > /dev/null; then
+          exit 0
+        fi
+        ${pkgs.coreutils}/bin/sleep 1
+      done
+      echo "AIC Bluetooth controller did not initialize; retrying UART attachment." >&2
+      exit 1
+    '';
     serviceConfig = {
       ExecStart = "${pkgs.bluez}/bin/hciattach -n /dev/ttyS1 any 1500000 flow";
       Restart = "always";
       RestartSec = 5;
+      TimeoutStartSec = 50;
     };
   };
 }

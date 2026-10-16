@@ -64,7 +64,7 @@ in {
     systemd.services.qwen-local = {
       description = "Local Qwen3-0.6B inference on the RK3566 NPU";
       wantedBy = [ "multi-user.target" ];
-      after = [ "systemd-modules-load.service" "rknpu-clock-limit.service" ];
+      after = [ "systemd-modules-load.service" "rknpu-clock-limit.service" "radxa-bluetooth.service" ];
       requires = [ "rknpu-clock-limit.service" ];
       startLimitIntervalSec = 300;
       startLimitBurst = 2;
