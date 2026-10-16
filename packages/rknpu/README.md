@@ -2,7 +2,7 @@
 
 `boards/radxa-zero3w/npu.nix` adds the vendor-compatible RKNPU interface to the
 appliance's existing mainline Linux 6.12 kernel. The standard flake enables
-it through `modules/local-model.nix` for Qwen3-0.6B on the tested 4 GB board.
+it through `modules/local-model.nix` for Qwen3.5-0.8B on the tested 4 GB board.
 The module can also be used independently for smaller RKNN workloads.
 
 Add the module to a NixOS configuration and set:
@@ -135,7 +135,7 @@ Upstream chat-model support was insufficient for this board:
   explicitly targets RK3588; its small parameter count does not make it a
   ready RK3566 model.
 
-## Experimental Qwen3-0.6B CLI
+## Experimental local Qwen CLI
 
 `modules/local-model.nix` packages a local HTTP server and two CLI clients:
 
@@ -143,7 +143,8 @@ Upstream chat-model support was insufficient for this board:
 imports = [ ./modules/local-model.nix ];
 appliance.localModel.enable = true;
 # Defaults: 1536 MiB CMA, NPU ceiling 200 MHz, 512-token context,
-# FP16 matrix operations, single inference slot, loopback port 8081.
+# Qwen3.5-0.8B, 24 layers offloaded with FP16 matrix operations,
+# single inference slot, loopback port 8081.
 ```
 
 The repository's standard `radxa-zero3w` configuration already imports and
@@ -171,12 +172,15 @@ includes the question, history and answer, so keep questions and logs short.
 Initial model loading takes tens of seconds. The model does not automatically
 read system state, execute commands, or repair the appliance.
 
-The model is the official Qwen3-0.6B Q8_0 GGUF, pinned in `qwen-model.nix` to
-Hugging Face revision `23749fefcc72300e3a2ad315e1317431b06b590a` with SHA-256
-`9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031`.
+The default model is Qwen3.5-0.8B Q8_0 GGUF, pinned in `qwen35-model.nix` to
+Hugging Face revision `8fea620810c4afa23dd6443f999a48574c1611a3` with SHA-256
+`37ae482d336108d23516fa35e8e0c4126688d81018b87178a18d752a1357814f`.
+The earlier Qwen3-0.6B package remains available as `qwen-model.nix`.
 This port does not create an `.rkllm` file: llama.cpp loads the GGUF and packs
-supported weight matrices for the NPU at startup. Attention, tokenization and
-unsupported operators remain on the CPU. The `--gpu-layers` option is GGML's
+supported weight matrices for the NPU at startup. Attention, tokenization,
+recurrent operations and unsupported operators remain on the CPU. The service
+offloads the 24 transformer blocks while retaining the large output projection
+on the CPU to fit the existing CMA pool. The `--gpu-layers` option is GGML's
 generic device-offload control; execution here uses the NPU.
 
 `llama.nix` pins `invisiofficial/rk-llama.cpp` at
@@ -193,6 +197,8 @@ creation exceeded the normal 1024-descriptor limit in an earlier trial.
 The tested configuration retains the appliance's stock CPU frequency limit
 and thermal trips. CMA is a shared RAM pool for contiguous DMA allocations;
 this changes available memory, not the NPU's physical compute capacity.
+
+## Original Qwen3-0.6B validation
 
 Validation on the connected board passed 12 native matrix tests (FP16/INT8,
 normal/native B layouts, including K1024/N1024) and 7/7 GGML matrix comparisons
@@ -218,6 +224,41 @@ qualification or a troubleshooting-quality evaluation. Tiny-model answers can
 be wrong, and NPU execution is currently slower than the CPU-only baseline.
 Keep one NPU inference process active at a time; use these clients against the
 service instead of starting standalone hardware tests while it is running.
+
+## Qwen3.5-0.8B validation, 2026-10-16
+
+`qwen35-model.nix` pins the llama.cpp maintainers' Q8_0 conversion of
+[Qwen3.5-0.8B](https://huggingface.co/ggml-org/Qwen3.5-0.8B-GGUF).
+The existing pinned runtime already implements the `qwen35` architecture;
+this trial required no additional runtime patch. Only text inference was tested.
+The standard appliance configuration selects this model with the tested
+24-layer FP16 offload settings below.
+
+The connected 4 GB board passed standalone Qwen3.5 inference with
+`--gpu-layers 24`, `RKNPU_HYBRID=W16A16_STANDARD`, a 512-token context,
+32-token batches, two CPU threads, and the same cache, warmup and KV-offload
+settings as the existing service. This keeps the output projection on the CPU;
+the aligned transformer-block weights require about 988 MiB when packed as
+FP16. Recurrent operations and other unsupported operators also use the CPU.
+The existing 1536 MiB CMA pool and 200 MHz ceiling were sufficient.
+
+Both CPU and NPU runs returned `READY`. The short CPU sample measured 12.1
+prompt tokens/sec and 4.2 generated tokens/sec; the NPU sample measured 3.0
+and 0.5 respectively. A second NPU question returned `free -h`, measuring 3.9
+prompt tokens/sec and 0.8 generated tokens/sec. NPU interrupts increased
+from 5315 to 5828 and then 7025. The final trial temperature was 61.666 C,
+and no NPU errors or OOM kills appeared in the bounded kernel-log check.
+These short samples establish functional execution, not sustained performance
+or reliable troubleshooting. An off-board CPU question about full disks
+incorrectly described `ls -l` as a disk-space check.
+
+The existing `qwen-local` service was stopped during standalone tests and
+restored afterward. The trial helper remains at
+`/var/lib/radxa-models/run-qwen35-test` on the tested board; it refuses to run
+while `qwen-local` is active. The model is retained at
+`/var/lib/radxa-models/Qwen3.5-0.8B-Q8_0.gguf`. Reproduction scripts and logs
+are under `work/npu/qwen35-*` and `work/npu/run-qwen35-test.sh` in the ignored
+workspace. The normal clients use the model selected by `modules/local-model.nix`.
 
 For standalone hardware checks, build `.#rknpu-matmul-smoke` or `.#rknpu-smoke`
 on an aarch64 Linux builder. Stop `qwen-local.service` before running their

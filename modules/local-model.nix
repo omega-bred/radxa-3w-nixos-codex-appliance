@@ -4,7 +4,7 @@ let
 in {
   imports = [ ../boards/radxa-zero3w/npu.nix ];
   options.appliance.localModel = {
-    enable = lib.mkEnableOption "the experimental local Qwen3-0.6B NPU server";
+    enable = lib.mkEnableOption "the experimental local Qwen3.5-0.8B NPU server";
     package = lib.mkOption {
       type = lib.types.package;
       default = pkgs.callPackage ../packages/rknpu/llama.nix { };
@@ -12,8 +12,8 @@ in {
     };
     model = lib.mkOption {
       type = lib.types.path;
-      default = pkgs.callPackage ../packages/rknpu/qwen-model.nix { };
-      description = "Qwen3-0.6B GGUF weights.";
+      default = pkgs.callPackage ../packages/rknpu/qwen35-model.nix { };
+      description = "Qwen3.5-0.8B GGUF weights.";
     };
     contextSize = lib.mkOption {
       type = lib.types.ints.between 256 2048;
@@ -62,7 +62,7 @@ in {
       '')
     ];
     systemd.services.qwen-local = {
-      description = "Local Qwen3-0.6B inference on the RK3566 NPU";
+      description = "Local Qwen3.5-0.8B inference on the RK3566 NPU";
       wantedBy = [ "multi-user.target" ];
       after = [ "systemd-modules-load.service" "rknpu-clock-limit.service" "radxa-bluetooth.service" ];
       requires = [ "rknpu-clock-limit.service" ];
@@ -77,7 +77,9 @@ in {
           "${cfg.package}/bin/llama-server"
           "--model" (toString cfg.model) "--alias" "qwen-local"
           "--host" "127.0.0.1" "--port" (toString cfg.port)
-          "--gpu-layers" "99" "--fit" "off" "--no-kv-offload"
+          # Offload the 24 transformer blocks; retain the large tied output
+          # projection on the CPU within the existing contiguous-memory pool.
+          "--gpu-layers" "24" "--fit" "off" "--no-kv-offload"
           "--ctx-size" (toString cfg.contextSize) "--batch-size" "32" "--ubatch-size" "32"
           "--threads" "2" "--threads-batch" "2" "--parallel" "1"
           "--predict" "96"
