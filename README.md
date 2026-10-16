@@ -103,6 +103,15 @@ Kernel changes can reboot between 03:00 and 05:00 device time (UTC by default).
 Failed builds leave the current system running; the boot menu retains three
 generations. Updating U-Boot itself requires reflashing the SD image.
 
+The board uses Linux's native Rockchip CPU clock controller for frequency
+scaling and thermal throttling. The bundled mainline TF-A firmware does not
+provide SCMI clocks, so enabling SCMI alone is insufficient. On-board builds
+use one job and one core; the updater refuses to build if CPU frequency scaling
+or CPU thermal cooling is unavailable. The CPU's 70/75°C thermal trips and 95°C
+emergency shutdown remain enabled. At 75°C, all four CPUs are limited to the
+lowest operating point (408 MHz) until the board cools below the trip's 2°C
+hysteresis.
+
 ```sh
 nix flake check
 nix build .#sdImage --system aarch64-linux

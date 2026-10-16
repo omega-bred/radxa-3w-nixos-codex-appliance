@@ -1,8 +1,12 @@
 /dts-v1/;
 /plugin/;
 
+#include <dt-bindings/clock/rk3568-cru.h>
+
 / {
     compatible = "radxa,zero-3w", "rockchip,rk3566";
+    /* The mainline RK3568 TF-A used by U-Boot has no SCMI clock service.
+       Route CPU DVFS through Linux's native CRU driver below instead. */
     fragment@0 {
         target-path = "/firmware/scmi";
         __overlay__ { status = "disabled"; };
@@ -18,6 +22,22 @@
         __overlay__ {
             bt-enable { gpio-hog; gpios = <17 0>; output-high; line-name = "bt-enable"; };
             bt-wake { gpio-hog; gpios = <12 0>; output-high; line-name = "bt-wake"; };
+        };
+    };
+    fragment@3 {
+        target = <&cpu0>;
+        __overlay__ { clocks = <&cru ARMCLK>; };
+    };
+    /* The default 70C step-wise map can back off too slowly under a sustained
+       four-core load. Use the existing 75C trip to force the lowest CPU OPP
+       (state 6, 408 MHz) until the temperature falls below its hysteresis. */
+    fragment@4 {
+        target-path = "/thermal-zones/cpu-thermal/cooling-maps";
+        __overlay__ {
+            map1 {
+                trip = <&cpu_alert1>;
+                cooling-device = <&cpu0 6 6>;
+            };
         };
     };
 };

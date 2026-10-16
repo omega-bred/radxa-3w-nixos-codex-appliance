@@ -25,6 +25,17 @@
     filter = "rk3566-radxa-zero-3w.dtb";
     overlays = [ { name = "headless-bluetooth"; dtsFile = ./headless-bluetooth.dts; } ];
   };
+  # Keep source builds modest on this small board.
+  nix.settings = { max-jobs = 1; cores = 1; };
+  # A missing CPU clock provider also removes thermal throttling. Avoid
+  # retrying a sustained rebuild in that state after a boot regression.
+  systemd.services.nixos-upgrade.preStart = ''
+    if ! test -r /sys/devices/system/cpu/cpufreq/policy0/scaling_driver ||
+       ! ${pkgs.gnugrep}/bin/grep -q '^cpufreq-' /sys/class/thermal/cooling_device*/type 2>/dev/null; then
+      echo "CPU frequency scaling or thermal cooling is unavailable; refusing an on-board update build." >&2
+      exit 1
+    fi
+  '';
   sdImage = {
     compressImage = true;
     firmwarePartitionOffset = 16;
