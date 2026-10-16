@@ -7,7 +7,7 @@ flake. Use a good power supply and a 16 GB or larger microSD card.
 
 The standard image also runs Qwen3.5-0.8B locally using the RK3566 NPU. This
 configuration is tested on the 4 GB board and uses a 1536 MiB contiguous DMA
-pool, with the NPU limited to 200 MHz. See the [NPU notes](packages/rknpu/README.md)
+pool, with the NPU at 400 MHz while active. See the [NPU notes](packages/rknpu/README.md)
 for limitations and hardware validation.
 
 The board pins Codex CLI **0.163.0** from OpenAI's ARM64 Linux release, including
@@ -146,7 +146,7 @@ the Zero 2 W is ARM64. Neither is a supported target yet.
 Run `qwen-local "your question"` for one local answer, or `qwen-chat` for an
 interactive session (`/exit` to leave). Both use the same local model service;
 initial loading after boot takes tens of seconds. The model currently generates
-about 0.5–0.8 tokens/sec in short NPU tests and can give incorrect answers.
+about 1.37–1.46 tokens/sec in short NPU tests and can give incorrect answers.
 It does not execute repair commands. Inspect it with `systemctl status qwen-local` or
 `journalctl -u qwen-local -f`. The [NPU notes](packages/rknpu/README.md) describe
 the experimental port, memory use and validation.

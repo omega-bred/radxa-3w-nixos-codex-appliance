@@ -18,7 +18,10 @@ The module defaults to 128 MiB of contiguous DMA memory, configurable through
 `appliance.npu.memoryMiB`. It uses the ZERO 3W's
 `vdd_gpu_npu` supply and the native CRU clock, because the appliance's TF-A does
 not provide SCMI clocks. Available operating points are 200–400 MHz at 900 mV;
-`appliance.npu.maxFrequencyMHz` defaults to a 200 MHz ceiling. It does not
+`appliance.npu.maxFrequencyMHz` and `minFrequencyMHz` default to 200 MHz when
+the NPU module is used independently. The local model module selects 400 MHz
+for both while retaining the driver's idle power gating. Raising only the
+ceiling does not change this driver's fixed 200 MHz boot request. It does not
 enable the GPU or the NPU IOMMU. The latter is untested on this board with the
 mainline kernel; the driver port supports contiguous DMA instead.
 
@@ -142,7 +145,7 @@ Upstream chat-model support was insufficient for this board:
 ```nix
 imports = [ ./modules/local-model.nix ];
 appliance.localModel.enable = true;
-# Defaults: 1536 MiB CMA, NPU ceiling 200 MHz, 512-token context,
+# Defaults: 1536 MiB CMA, active NPU clock 400 MHz, 512-token context,
 # Qwen3.5-0.8B, 24 layers offloaded with FP16 matrix operations,
 # single inference slot, loopback port 8081.
 ```
@@ -259,6 +262,40 @@ while `qwen-local` is active. The model is retained at
 `/var/lib/radxa-models/Qwen3.5-0.8B-Q8_0.gguf`. Reproduction scripts and logs
 are under `work/npu/qwen35-*` and `work/npu/run-qwen35-test.sh` in the ignored
 workspace. The normal clients use the model selected by `modules/local-model.nix`.
+
+### Active clock and performance tuning
+
+The deployed Qwen3.5 service passed one-shot requests, multi-turn `qwen-chat`,
+and an independent request after earlier conversations, with zero restarts.
+Profiling the original 200 MHz configuration attributed about 70% of the
+measured inference span to `rknn_matmul_run`; cache synchronization was under
+1%. A controlled 32-token benchmark measured 4.35 generated tokens/sec on the
+CPU, 0.83 with the default NPU/OpenMP settings, 0.78 with one OpenMP thread,
+and 0.71 with passive OpenMP waiting. The slower threading variants were not
+adopted.
+
+This driver's frequency request starts at the 200 MHz boot clock and does not
+rise automatically when its devfreq ceiling increases. The local model module
+therefore sets both `minFrequencyMHz` and `maxFrequencyMHz` to 400 MHz. Both
+available operating points retain the existing 900 mV supply. The clock service
+lowers an old floor before changing the ceiling, so reverting to 200 MHz works.
+Idle power gating and all CPU thermal protection remain enabled. Setting
+`appliance.npu.maxFrequencyMHz = 200;` also selects a 200 MHz floor for the
+local model unless `minFrequencyMHz` is explicitly overridden.
+
+Matched requests through one loaded server, alternating 200/400/200/400 MHz,
+each generated the same 32 tokens with no prompt-cache reuse. Generation rates
+were 0.830/1.460/0.829/1.374 tokens/sec, with prompt rates of
+10.83/15.13/10.69/14.65 tokens/sec. The measured active clocks matched the
+requested values. This is about a 71% average generation improvement while
+retaining FP16, although the CPU-only benchmark remains faster. The last
+400 MHz run ended at 69.375 C with the CPU thermal ceiling reduced to 816 MHz;
+earlier runs retained 1.608 GHz. Cooling can limit sustained performance.
+These short tests do not establish sustained-load qualification.
+
+The profiler, benchmark scripts and raw results are retained under ignored
+`work/npu/`, including `qwen35-threading-bench.log` and
+`qwen35-service-clock-bench.log`.
 
 For standalone hardware checks, build `.#rknpu-matmul-smoke` or `.#rknpu-smoke`
 on an aarch64 Linux builder. Stop `qwen-local.service` before running their

@@ -29,6 +29,10 @@ in {
   config = lib.mkIf cfg.enable {
     appliance.npu.enable = lib.mkDefault true;
     appliance.npu.memoryMiB = lib.mkDefault 1536;
+    appliance.npu.maxFrequencyMHz = lib.mkDefault 400;
+    # The driver's fixed request stays at its boot rate when only the ceiling
+    # changes. Run at the configured ceiling while retaining idle power gating.
+    appliance.npu.minFrequencyMHz = lib.mkDefault config.appliance.npu.maxFrequencyMHz;
     assertions = [ {
       assertion = config.appliance.npu.enable && config.appliance.npu.autoload;
       message = "The local Qwen server requires the NPU driver to load automatically.";
