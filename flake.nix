@@ -9,15 +9,24 @@
       modules = [
         ./boards/radxa-zero3w
         ./modules/appliance.nix
-        { system.configurationRevision = self.rev or "dirty"; }
+        ./modules/local-model.nix
+        {
+          appliance.localModel.enable = true;
+          system.configurationRevision = self.rev or "dirty";
+        }
       ];
     };
   in {
     nixosModules.appliance = import ./modules/appliance.nix;
+    nixosModules.localModel = import ./modules/local-model.nix;
+    nixosModules.npu = import ./boards/radxa-zero3w/npu.nix;
     nixosConfigurations.radxa-zero3w = appliance;
     packages.${system} = {
       sdImage = appliance.config.system.build.sdImage;
       default = self.packages.${system}.sdImage;
+      qwen-runtime = appliance.config.appliance.localModel.package;
+      rknpu-matmul-smoke = appliance.pkgs.callPackage ./packages/rknpu/matmul-smoke.nix { };
+      rknpu-smoke = appliance.pkgs.callPackage ./packages/rknpu/smoke.nix { };
     };
     checks = nixpkgs.lib.genAttrs [ "x86_64-linux" "aarch64-linux" ] (arch: let
       pkgs = import nixpkgs { system = arch; };
@@ -29,6 +38,22 @@
         touch $out
       '';
     } // nixpkgs.lib.optionalAttrs (arch == system) {
+      board-npu = assert builtins.elem "cma=1536M" appliance.config.boot.kernelParams;
+        pkgs.runCommand "board-npu-tests" { nativeBuildInputs = [ pkgs.dtc ]; } ''
+        dtb=${appliance.config.hardware.deviceTree.package}/rockchip/rk3566-radxa-zero-3w.dtb
+        test "$(fdtget -t s "$dtb" /npu@fde40000 status)" = okay
+        test "$(fdtget -t s "$dtb" /npu@fde40000 compatible)" = 'rockchip,rk3568-rknpu rockchip,rknpu'
+        read -r provider clock_id rest < <(fdtget -t u "$dtb" /npu@fde40000 clocks)
+        test "$provider" = "$(fdtget -t u "$dtb" /clock-controller@fdd20000 phandle)"
+        test "$(fdtget -t u "$dtb" /npu@fde40000 assigned-clock-rates)" = 200000000
+        regulator=$(fdtget -t s "$dtb" /__symbols__ vdd_gpu_npu)
+        test "$(fdtget -t u "$dtb" /npu@fde40000 rknpu-supply)" = "$(fdtget -t u "$dtb" "$regulator" phandle)"
+        ! fdtget -p "$dtb" /npu@fde40000 | grep -qx iommus
+        test "$(fdtget -t u "$dtb" /npu-opp-table/opp-200000000 opp-hz)" = '0 200000000'
+        test "$(fdtget -t u "$dtb" /npu-opp-table/opp-400000000 opp-hz)" = '0 400000000'
+        test "$(fdtget -t u "$dtb" /npu-opp-table/opp-200000000 opp-microvolt)" = 900000
+        touch $out
+      '';
       board-thermal = pkgs.runCommand "board-thermal-tests" { nativeBuildInputs = [ pkgs.dtc ]; } ''
         dtb=${appliance.config.hardware.deviceTree.package}/rockchip/rk3566-radxa-zero-3w.dtb
         read -r provider clock_id < <(fdtget -t u "$dtb" /cpus/cpu@0 clocks)

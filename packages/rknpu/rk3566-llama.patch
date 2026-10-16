@@ -1,0 +1,172 @@
+diff --git a/ggml/src/ggml-rknpu2/ggml-rknpu2.cpp b/ggml/src/ggml-rknpu2/ggml-rknpu2.cpp
+index 4cb290f..b89c108 100644
+--- a/ggml/src/ggml-rknpu2/ggml-rknpu2.cpp
++++ b/ggml/src/ggml-rknpu2/ggml-rknpu2.cpp
+@@ -146,7 +146,11 @@ private:
+ 
+             rknn_matmul_io_attr io_attr;
+             rknn_matmul_ctx ctx = 0;
+-            rknn_matmul_create(&ctx, &info, &io_attr);
++            int ret = rknn_matmul_create(&ctx, &info, &io_attr);
++            if (ret != RKNN_SUCC || ctx == 0) {
++                fprintf(stderr, "RKNPU: allocator context creation failed: %d\n", ret);
++                std::abort();
++            }
+             allocator_contexts[domain_id] = ctx;
+         }
+     }
+@@ -396,9 +400,14 @@ struct ggml_backend_rknpu_context {
+             default: core_mask = RKNN_NPU_CORE_AUTO; break;
+         }
+ 
+-        int ret = rknn_matmul_set_core_mask(ctx->ctx, core_mask);
+-        if (ret != RKNN_SUCC) {
+-            // Handle error
++        // The SDK exposes core selection only on multicore RK3588 devices.
++        const auto& config = rknpu2_configuration::Rknpu2ConfigManager::get_instance().get_current_config();
++        if (config.device_name != "RK3566") {
++            int ret = rknn_matmul_set_core_mask(ctx->ctx, core_mask);
++            if (ret != RKNN_SUCC) {
++                fprintf(stderr, "RKNPU: core selection failed: %d\n", ret);
++                return nullptr;
++            }
+         }
+ 
+         matmul_ctx_cache[key] = ctx;
+@@ -1144,6 +1153,10 @@ static size_t pack_tensor_segment(
+ static void ggml_backend_rknpu_buffer_set_tensor(ggml_backend_buffer_t buffer, struct ggml_tensor * tensor, const void * data, size_t offset, size_t size) {
+     auto * ctx = (ggml_backend_rknpu_buffer_context *) buffer->context;
+ 
++    // Preserve GGUF bytes for GGML readback and CPU fallback. Native DMA
++    // tiles are a separate representation and cannot be read as GGUF data.
++    memcpy((uint8_t*)tensor->data + offset, data, size);
++
+     const auto& config = rknpu2_configuration::Rknpu2ConfigManager::get_instance().get_current_config();
+     const auto* pipeline = config.resolve_op_support(tensor);
+ 
+@@ -1291,22 +1304,12 @@ static void ggml_backend_rknpu_buffer_set_tensor(ggml_backend_buffer_t buffer, s
+ 
+         rknn_matmul_ctx sync_ctx = g_domain_manager.get_allocator_context(alloc.iommu_domain_id);
+         RKNN_CHECK(rknn_mem_sync(sync_ctx, alloc.mem, RKNN_MEMORY_SYNC_TO_DEVICE), "sync B TO_DEVICE");
+-    } else {
+-        memcpy((uint8_t*)tensor->data + offset, data, size);
+     }
+ }
+ 
+ static void ggml_backend_rknpu_buffer_get_tensor(ggml_backend_buffer_t buffer, const struct ggml_tensor * tensor, void * data, size_t offset, size_t size) {
+-    auto * ctx = (ggml_backend_rknpu_buffer_context*)buffer->context;
+-    size_t tensor_offset_in_virtual = (uintptr_t)tensor->data - (uintptr_t)ctx->virtual_base;
+-
+-    std::lock_guard<std::mutex> lock(ctx->mutex);
+-    auto it = ctx->tensor_allocs.find(tensor_offset_in_virtual);
+-    if (it != ctx->tensor_allocs.end()) {
+-        memcpy(data, (uint8_t*)it->second.mem->virt_addr + offset, size);
+-    } else {
+-        memcpy(data, (uint8_t*)tensor->data + offset, size);
+-    }
++    UNUSED(buffer);
++    memcpy(data, (uint8_t*)tensor->data + offset, size);
+ }
+ 
+ static void ggml_backend_rknpu_buffer_clear(ggml_backend_buffer_t buffer, uint8_t value) {
+@@ -1367,7 +1370,9 @@ static size_t ggml_backend_rknpu_buffer_type_get_alignment(ggml_backend_buffer_t
+ 
+ static size_t ggml_backend_rknpu_buffer_type_get_alloc_size(ggml_backend_buffer_type_t buft, const struct ggml_tensor * tensor) {
+     UNUSED(buft);
+-    return get_tensor_packed_size(tensor);
++    // The virtual buffer also retains original GGUF bytes for readback.
++    // INT8 DMA tiles can be smaller than F16 or block-quantized GGUF data.
++    return std::max(ggml_nbytes(tensor), get_tensor_packed_size(tensor));
+ }
+ 
+ 
+@@ -1389,10 +1394,27 @@ static void ggml_backend_rknpu_device_get_memory(ggml_backend_dev_t dev, size_t
+     UNUSED(dev);
+     *free = 0;
+     *total = 0;
++    const auto& config = rknpu2_configuration::Rknpu2ConfigManager::get_instance().get_current_config();
++    if (config.device_name == "RK3566") {
++        if (FILE* meminfo = fopen("/proc/meminfo", "r")) {
++            char line[256];
++            size_t kib;
++            while (fgets(line, sizeof(line), meminfo)) {
++                if (sscanf(line, "CmaTotal: %zu kB", &kib) == 1) *total = kib * 1024;
++                if (sscanf(line, "CmaFree: %zu kB", &kib) == 1) *free = kib * 1024;
++            }
++            fclose(meminfo);
++        }
++    }
+ }
+ 
+ static enum ggml_backend_dev_type ggml_backend_rknpu_device_get_type(ggml_backend_dev_t dev) {
+     UNUSED(dev);
++    // GGML's dedicated-device category allows explicit --gpu-layers control.
++    // ACCEL buffers are automatically preferred even for CPU-only weights,
++    // which can exhaust this board's bounded contiguous-memory pool.
++    const auto& config = rknpu2_configuration::Rknpu2ConfigManager::get_instance().get_current_config();
++    if (config.device_name == "RK3566") return GGML_BACKEND_DEVICE_TYPE_GPU;
+     return GGML_BACKEND_DEVICE_TYPE_ACCEL;
+ }
+ 
+@@ -1604,4 +1626,4 @@ GGML_API ggml_backend_reg_t ggml_backend_rknpu2_reg(void) {
+ 
+ #ifdef GGML_BACKEND_DL
+ GGML_BACKEND_DL_IMPL(ggml_backend_rknpu2_reg)
+-#endif
+\ No newline at end of file
++#endif
+diff --git a/ggml/src/ggml-rknpu2/rknpu2-configuration.cpp b/ggml/src/ggml-rknpu2/rknpu2-configuration.cpp
+index 5cd9f00..4c72e1f 100644
+--- a/ggml/src/ggml-rknpu2/rknpu2-configuration.cpp
++++ b/ggml/src/ggml-rknpu2/rknpu2-configuration.cpp
+@@ -108,6 +108,13 @@ const Rknpu2HardwarePipeline* Rknpu2DeviceConfig::resolve_op_support(const struc
+         return nullptr;
+     }
+ 
++    if (device_name == "RK3566" &&
++        (w_tensor->ne[2] != 1 || w_tensor->ne[3] != 1 ||
++         w_tensor->ne[0] % pipeline->k_align != 0 ||
++         w_tensor->ne[1] % pipeline->n_align != 0)) {
++        return nullptr;
++    }
++
+     return pipeline;
+ }
+ 
+@@ -274,15 +281,29 @@ Rknpu2ConfigManager::Rknpu2ConfigManager() {
+     // ... fill config for RK3576 ...
+     // device_configs["RK3576"] = rk3576_config;
+ 
+-    // --- Define RK3566 Configuration (Placeholder) ---
+-    // Rknpu2DeviceConfig rk3566_config;
+-    // ... fill config for RK3566 ...
+-    // device_configs["RK3566"] = rk3566_config;
++    // RK3566 has one core and different native weight tiles from RK3588.
++    // Start with FP16 for every GGUF precision to isolate backend correctness
++    // from activation/weight requantization errors.
++    Rknpu2DeviceConfig rk3566_config;
++    rk3566_config.device_name = "RK3566";
++    rk3566_config.active_cores = {0};
++    rk3566_config.max_k_limit = 8192;
++    rk3566_config.hardware_pipelines = {
++        {"W16A16_STANDARD", NPU_TYPE_FP16, NPU_TYPE_FP16, NPU_TYPE_FP32,
++         RKNN_FLOAT16_MM_FLOAT16_TO_FLOAT32, 16, 8, 0, false, false},
++        {"W8A8_STANDARD", NPU_TYPE_INT8, NPU_TYPE_INT8, NPU_TYPE_INT32,
++         RKNN_INT8_MM_INT8_TO_INT32, 32, 16, 0, false, false},
++    };
++    rk3566_config.use_custom_pattern = use_custom_pattern;
++    rk3566_config.custom_hybrid_pattern = custom_pattern;
++    for (int type : {GGML_TYPE_F16, GGML_TYPE_Q8_0, GGML_TYPE_Q6_K, GGML_TYPE_Q4_0}) {
++        rk3566_config.default_patterns[type] = {"W16A16_STANDARD"};
++    }
++    device_configs["RK3566"] = rk3566_config;
+ 
+     // Select a default device
+-    if (!device_configs.empty()) {
+-        select_device(device_configs.begin()->first);
+-    }
++    select_device("RK3588");
++    if (const char* device = std::getenv("RKNPU_DEVICE")) select_device(device);
+ }
+ 
+ bool Rknpu2ConfigManager::select_device(const std::string& device_name) {

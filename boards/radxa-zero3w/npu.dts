@@ -1,0 +1,67 @@
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/clock/rk3568-cru.h>
+#include <dt-bindings/interrupt-controller/arm-gic.h>
+#include <dt-bindings/interrupt-controller/irq.h>
+#include <dt-bindings/power/rk3568-power.h>
+
+/ {
+    compatible = "radxa,zero-3w", "rockchip,rk3566";
+
+    fragment@0 {
+        target = <&power>;
+        __overlay__ {
+            #address-cells = <1>;
+            #size-cells = <0>;
+            power-domain@6 {
+                reg = <RK3568_PD_NPU>;
+                clocks = <&cru ACLK_NPU_PRE>, <&cru HCLK_NPU_PRE>, <&cru PCLK_NPU_PRE>;
+                pm_qos = <&qos_npu>;
+                #power-domain-cells = <0>;
+            };
+        };
+    };
+
+    fragment@1 {
+        target-path = "/";
+        __overlay__ {
+            #address-cells = <2>;
+            #size-cells = <2>;
+            npu_opp_table: npu-opp-table {
+                compatible = "operating-points-v2";
+                /* Start below the vendor's 600 MHz default. The board shares
+                   its 900 mV supply with the disabled GPU. */
+                opp-200000000 {
+                    opp-hz = /bits/ 64 <200000000>;
+                    opp-microvolt = <900000>;
+                };
+                opp-400000000 {
+                    opp-hz = /bits/ 64 <400000000>;
+                    opp-microvolt = <900000>;
+                };
+            };
+
+            npu: npu@fde40000 {
+                compatible = "rockchip,rk3568-rknpu", "rockchip,rknpu";
+                reg = <0 0xfde40000 0 0x10000>;
+                interrupts = <GIC_SPI 151 IRQ_TYPE_LEVEL_HIGH>;
+                interrupt-names = "npu_irq";
+                /* The driver calls its frequency-control clock scmi_clk.
+                   Use the native CRU clock: this appliance's TF-A has no SCMI. */
+                clocks = <&cru CLK_NPU>, <&cru ACLK_NPU>, <&cru HCLK_NPU>;
+                clock-names = "scmi_clk", "aclk", "hclk";
+                assigned-clocks = <&cru CLK_NPU>;
+                assigned-clock-rates = <200000000>;
+                resets = <&cru SRST_A_NPU>, <&cru SRST_H_NPU>;
+                reset-names = "srst_a", "srst_h";
+                power-domains = <&power RK3568_PD_NPU>;
+                operating-points-v2 = <&npu_opp_table>;
+                rknpu-supply = <&vdd_gpu_npu>;
+                /* This port uses contiguous DMA buffers. Do not attach the
+                   untested mainline RK3566 NPU IOMMU path. */
+                status = "okay";
+            };
+        };
+    };
+};

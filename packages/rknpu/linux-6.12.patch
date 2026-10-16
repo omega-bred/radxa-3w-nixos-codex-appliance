@@ -1,0 +1,40 @@
+--- a/src/rknpu_drv.c
++++ b/src/rknpu_drv.c
+@@ -840,8 +840,8 @@
+ static void rknpu_init_timer(struct rknpu_device *rknpu_dev)
+ {
+ 	rknpu_dev->kt = ktime_set(0, RKNPU_LOAD_INTERVAL);
+-	hrtimer_setup(&rknpu_dev->timer, hrtimer_handler, CLOCK_MONOTONIC,
+-		      HRTIMER_MODE_REL);
++	hrtimer_init(&rknpu_dev->timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
++	rknpu_dev->timer.function = hrtimer_handler;
+ 	hrtimer_start(&rknpu_dev->timer, rknpu_dev->kt, HRTIMER_MODE_REL);
+ }
+ 
+@@ -1795,5 +1795,5 @@
+ MODULE_VERSION(RKNPU_GET_DRV_VERSION_STRING(DRIVER_MAJOR, DRIVER_MINOR,
+ 					    DRIVER_PATCHLEVEL));
+ #if KERNEL_VERSION(5, 16, 0) < LINUX_VERSION_CODE
+-MODULE_IMPORT_NS("DMA_BUF");
+-#endif
++MODULE_IMPORT_NS(DMA_BUF);
++#endif
+--- a/src/rknpu_gem.c
++++ b/src/rknpu_gem.c
+@@ -15,6 +15,7 @@
+ #include <linux/dma-buf.h>
+ #include <linux/iommu.h>
+ #include <linux/pfn.h>
++#include <linux/pfn_t.h>
+ #include <linux/version.h>
+ #include <asm/cacheflush.h>
+ #include <linux/vmalloc.h>
+@@ -1310,7 +1311,7 @@
+ 	}
+ 
+ 	pfn = page_to_pfn(rknpu_obj->pages[page_offset]);
+-	return vmf_insert_mixed(vma, vmf->address, pfn);
++	return vmf_insert_mixed(vma, vmf->address, __pfn_to_pfn_t(pfn, PFN_DEV));
+ }
+ #elif KERNEL_VERSION(4, 14, 0) <= LINUX_VERSION_CODE
+ int rknpu_gem_fault(struct vm_fault *vmf)
