@@ -111,6 +111,9 @@ or CPU thermal cooling is unavailable. The CPU's 70/75°C thermal trips and 95°
 emergency shutdown remain enabled. At 75°C, all four CPUs are limited to the
 lowest operating point (408 MHz) until the board cools below the trip's 2°C
 hysteresis.
+The generic SoC's 1.8 GHz operating point is disabled to retain the ZERO 3W's
+[documented 1.6 GHz rating](https://docs.radxa.com/en/zero/zero3#features)
+(the 1.608 GHz operating point).
 
 ```sh
 nix flake check

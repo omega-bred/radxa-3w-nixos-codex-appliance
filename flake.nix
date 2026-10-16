@@ -39,10 +39,14 @@
         test "$(fdtget -t u "$dtb" /thermal-zones/cpu-thermal/trips/cpu_alert0 temperature)" = 70000
         read -r hot_cpu hot_min hot_max < <(fdtget -t u "$dtb" /thermal-zones/cpu-thermal/cooling-maps/map1 cooling-device)
         test "$hot_cpu" = "$cooling_cpu"
-        test "$hot_min $hot_max" = "6 6"
+        test "$hot_min $hot_max" = "5 5"
         test "$(fdtget -t u "$dtb" /thermal-zones/cpu-thermal/cooling-maps/map1 trip)" = "$(fdtget -t u "$dtb" /thermal-zones/cpu-thermal/trips/cpu_alert1 phandle)"
         test "$(fdtget -t u "$dtb" /thermal-zones/cpu-thermal/trips/cpu_alert1 temperature)" = 75000
         test "$(fdtget -l "$dtb" /opp-table-0 | wc -l)" = 7
+        test "$(fdtget -t s "$dtb" /opp-table-0/opp-1800000000 status)" = disabled
+        for hz in 408000000 600000000 816000000 1104000000 1416000000 1608000000; do
+          test "$(fdtget -t s -d okay "$dtb" /opp-table-0/opp-$hz status)" = okay
+        done
         test "$(fdtget -t u "$dtb" /thermal-zones/cpu-thermal/trips/cpu_crit temperature)" = 95000
         test "$(fdtget -t s "$dtb" /firmware/scmi status)" = disabled
         touch $out
