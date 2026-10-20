@@ -1,6 +1,6 @@
 { config, lib, pkgs, modulesPath, ... }:
 {
-  imports = [ "${modulesPath}/installer/sd-card/sd-image.nix" ./wireless.nix ];
+  imports = [ "${modulesPath}/installer/sd-card/sd-image.nix" ./wireless.nix ./cellular.nix ];
   nixpkgs.hostPlatform = "aarch64-linux";
   nixpkgs.config.allowUnfreePredicate = pkg: builtins.elem (lib.getName pkg)
     ([ "rkbin" "rkbin-unstable" ] ++ lib.optionals (config.appliance.npu.enable or false)
@@ -18,7 +18,7 @@
   boot.loader.grub.enable = false;
   boot.loader.generic-extlinux-compatible.enable = true;
   boot.kernelPackages = pkgs.linuxPackages_6_12;
-  boot.kernelParams = [ "console=ttyS2,1500000n8" ];
+  boot.kernelParams = lib.mkIf (!config.appliance.cellular.enable) [ "console=ttyS2,1500000n8" ];
   # The AIC module supplies its own firmware; skip unrelated PC/GPU bundles.
   hardware.enableRedistributableFirmware = lib.mkForce false;
   hardware.wirelessRegulatoryDatabase = true;
@@ -48,8 +48,8 @@
       ${config.boot.loader.generic-extlinux-compatible.populateCmd} -c ${config.system.build.toplevel} -d ./files/boot -g 0
     '';
     postBuildCommands = ''
-      test $(stat -c%s ${pkgs.ubootRadxaZero3W}/u-boot-rockchip.bin) -lt $((16 * 1024 * 1024 - 32768))
-      dd if=${pkgs.ubootRadxaZero3W}/u-boot-rockchip.bin of=$img bs=512 seek=64 conv=notrunc
+      test $(stat -c%s ${config.system.build.cellularBootloader or pkgs.ubootRadxaZero3W}/u-boot-rockchip.bin) -lt $((16 * 1024 * 1024 - 32768))
+      dd if=${config.system.build.cellularBootloader or pkgs.ubootRadxaZero3W}/u-boot-rockchip.bin of=$img bs=512 seek=64 conv=notrunc
     '';
   };
   # The SDIO driver uploads the combo chip's Bluetooth firmware too.

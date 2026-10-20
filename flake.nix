@@ -16,13 +16,22 @@
         }
       ];
     };
+    cellularAppliance = appliance.extendModules {
+      modules = [ {
+        appliance.cellular = { enable = true; apn = "sensor.net"; autostart = true; };
+        appliance.updateFlake = "git+https://github.com/omega-bred/radxa-3w-nixos-codex-appliance?ref=stable#radxa-zero3w-cellular";
+      } ];
+    };
   in {
     nixosModules.appliance = import ./modules/appliance.nix;
     nixosModules.localModel = import ./modules/local-model.nix;
     nixosModules.npu = import ./boards/radxa-zero3w/npu.nix;
     nixosConfigurations.radxa-zero3w = appliance;
+    nixosConfigurations.radxa-zero3w-cellular = cellularAppliance;
     packages.${system} = {
       sdImage = appliance.config.system.build.sdImage;
+      sdImage-cellular = cellularAppliance.config.system.build.sdImage;
+      cellular-bootloader = cellularAppliance.config.system.build.cellularBootloader;
       default = self.packages.${system}.sdImage;
       qwen-runtime = appliance.config.appliance.localModel.package;
       rknpu-matmul-smoke = appliance.pkgs.callPackage ./packages/rknpu/matmul-smoke.nix { };
@@ -37,6 +46,16 @@
         python -m unittest -v test_provision
         touch $out
       '';
+      cellular = assert cellularAppliance.config.networking.firewall.checkReversePath == "loose";
+        assert !(builtins.elem "console=ttyS2,1500000n8" cellularAppliance.config.boot.kernelParams);
+        assert cellularAppliance.config.boot.loader.timeout == 0;
+        assert !(builtins.elem "network.target" cellularAppliance.config.systemd.services.pppd-cellular.before);
+        pkgs.runCommand "cellular-tests" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+          cp -r ${./cellular} cellular
+          cp ${./tests/test_cellular.py} test_cellular.py
+          python -m unittest -v test_cellular
+          touch $out
+        '';
     } // nixpkgs.lib.optionalAttrs (arch == system) {
       board-npu = assert builtins.elem "cma=1536M" appliance.config.boot.kernelParams;
         pkgs.runCommand "board-npu-tests" { nativeBuildInputs = [ pkgs.dtc ]; } ''

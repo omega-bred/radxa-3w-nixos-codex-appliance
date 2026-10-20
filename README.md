@@ -157,6 +157,59 @@ Codex sign-in can also run locally with `runuser -u codex -- codex login --devic
 The provisioning token is in `/var/lib/codex-provision/config.json` (root only).
 Wi-Fi profiles, hostname, Codex credentials and Tailscale identity survive updates.
 
+## SIM7080G cellular option
+
+`radxa-zero3w-cellular` adds the Waveshare SIM7080G HAT over the GPIO UART,
+using the 1NCE Platform 2.0 IPv4 APN `sensor.net`. The standard `radxa-zero3w`
+configuration remains available for boards without this HAT. The HAT's UART
+voltage jumper must select 3.3 V, its PWR jumper must select physical pin 7,
+and an LTE antenna and activated SIM must be installed.
+
+```sh
+nix build .#sdImage-cellular
+# NixOS configuration for an existing installation:
+nix build .#nixosConfigurations.radxa-zero3w-cellular.config.system.build.toplevel
+```
+
+This variant reserves `/dev/ttyS2` (pins 8/10) for the modem, removes its serial
+login/kernel console, and holds physical pin 7 (GPIO3_C4) low to release PWRKEY.
+The connection service recovers command mode, powers on an unresponsive modem
+once, configures LTE-M and the APN, and waits for home or roaming registration
+before dialing PPP. GNSS remains off. A failed service retries after one minute.
+
+Wi-Fi keeps its normal route metric 600; cellular uses metric 700. PPP adds and
+removes its DNS servers through openresolv. Loose reverse-path checking allows
+LTE replies while the preferred route uses Wi-Fi; the normal inbound firewall
+and Tailscale-only SSH access remain in force. A lost Wi-Fi route selects LTE.
+Detecting an upstream outage while Wi-Fi stays connected requires a separate
+health check and is not implemented here.
+
+The supplied cellular variant starts the connection at boot. For manual use,
+set `appliance.cellular.autostart = false`; this is the module option's default.
+Measure idle Tailscale and application traffic against the SIM's data allowance.
+
+```sh
+sudo systemctl start pppd-cellular
+sudo systemctl stop pppd-cellular
+journalctl -u appliance-cellular-power -u pppd-cellular
+ip -4 address show ppp0
+ip -4 route
+sudo curl -4 --interface ppp0 https://1.1.1.1/cdn-cgi/trace
+```
+
+The cellular image also uses U-Boot with `CONFIG_BOOTDELAY=-2` and a zero-timeout
+extlinux menu, so modem replies cannot interrupt the boot countdown. A NixOS
+rebuild does **not** replace U-Boot on existing boards. The separate
+`cellular-bootloader` package must be flashed through a separately authorized
+maintenance procedure with a backup and recovery path. Do not assume that a
+working live PPP connection establishes reboot reliability on the old firmware.
+
+The initial 2026-10-19 hardware test used modem firmware `1951B16SIM7080` and
+registered on T-Mobile LTE-M band 12. `sensor.net` is the new 1NCE platform APN;
+older SIMs may instead use `iot.1nce.net`. Use the APN shown for the actual SIM.
+See the [1NCE platform changes](https://help.1nce.com/platform-migration/breaking-changes/)
+and [Radxa UART2 boot-console warning](https://docs.radxa.com/en/zero/zero3/hardware-design/hardware-interface).
+
 Hardware support follows [icefirex's ZERO 3W NixOS example](https://github.com/icefirex/nixos-radxa-zero3w),
 [ritiek's RK3566 configuration](https://github.com/ritiek/dotfiles/tree/master/machines/radrubble),
 and [Radxa's AIC8800 driver](https://github.com/radxa-pkg/aic8800).
