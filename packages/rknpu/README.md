@@ -146,7 +146,8 @@ Upstream chat-model support was insufficient for this board:
 imports = [ ./modules/local-model.nix ];
 appliance.localModel.enable = true;
 # Defaults: 1536 MiB CMA, active NPU clock 400 MHz, 512-token context,
-# Qwen3.5-0.8B, 24 layers offloaded with FP16 matrix operations,
+# Qwen3.5-0.8B, all transformer blocks with FP16 matrix operations,
+# explicit CPU output placement, CPU performance governor,
 # single inference slot, loopback port 8081.
 ```
 
@@ -234,15 +235,16 @@ service instead of starting standalone hardware tests while it is running.
 [Qwen3.5-0.8B](https://huggingface.co/ggml-org/Qwen3.5-0.8B-GGUF).
 The existing pinned runtime already implements the `qwen35` architecture;
 this trial required no additional runtime patch. Only text inference was tested.
-The standard appliance configuration selects this model with the tested
-24-layer FP16 offload settings below.
+The standard appliance configuration selects this model. The original
+layer-count-only placement below was corrected in the 2026-10-19 baseline.
 
 The connected 4 GB board passed standalone Qwen3.5 inference with
 `--gpu-layers 24`, `RKNPU_HYBRID=W16A16_STANDARD`, a 512-token context,
 32-token batches, two CPU threads, and the same cache, warmup and KV-offload
-settings as the existing service. This keeps the output projection on the CPU;
-the aligned transformer-block weights require about 988 MiB when packed as
-FP16. Recurrent operations and other unsupported operators also use the CPU.
+settings as the existing service. We initially interpreted this as retaining
+the output projection on the CPU. That interpretation was incorrect: this
+fork includes output in its offload count. Recurrent operations and other
+unsupported operators also use the CPU.
 The existing 1536 MiB CMA pool and 200 MHz ceiling were sufficient.
 
 Both CPU and NPU runs returned `READY`. The short CPU sample measured 12.1
@@ -296,6 +298,49 @@ These short tests do not establish sustained-load qualification.
 The profiler, benchmark scripts and raw results are retained under ignored
 `work/npu/`, including `qwen35-threading-bench.log` and
 `qwen35-service-clock-bench.log`.
+
+### Cooled FP16 baseline, 2026-10-19
+
+With a heatsink and small fan installed, repeated normal inference requests
+started at 38.3 C and peaked at 46.7 C. The heavier CPU benchmark peaked at
+59.4 C. Two-second samples retained the full 1.608 GHz CPU ceiling throughout;
+the earlier inference sequence reached 69.4 C and reduced the CPU ceiling to
+816 MHz. This is a historical comparison rather than a controlled fan on/off
+experiment.
+
+The runtime selects offloaded layers using `n_layer_all + 1 - n_gpu_layers`,
+including output. The service now selects all transformer blocks with
+`--gpu-layers 99` and explicitly sets
+`--override-tensor '(token_embd|output)[.]weight=CPU'`. Both tensor names matter
+because Qwen ties the output weights to its input embeddings. Startup logs
+confirm a 270.41 MiB CPU_REPACK buffer and a 925.12 MiB FP16 RKNPU model buffer.
+This avoids placing the large output matrix in contiguous NPU memory. One
+restart of the old configuration failed its 508,559,360-byte allocation and
+recovered automatically; both explicit-placement service trials started
+without automatic restarts.
+
+In matched 32-prompt/32-generation benchmarks with two repetitions, explicit
+CPU output placement improved FP16 generation from 1.48 to 1.87 tokens/sec.
+The CPU performance governor raised the normal service result to 2.04
+tokens/sec, versus 1.47 with the old placement and schedutil. The local-model
+module now defaults `powerManagement.cpuFreqGovernor` to `performance`;
+set it explicitly to `schedutil` to retain automatic CPU frequency selection.
+The NPU's 400 MHz range, idle power gating, and CPU thermal trips are unchanged.
+Cooling and power consumption should be assessed for each installation.
+
+`appliance.localModel.npuPrecision` defaults to `fp16`, retaining the existing
+NPU arithmetic precision. Its experimental `int8` option reached 2.91
+tokens/sec with explicit CPU output placement and the performance governor;
+the CPU-only benchmark remained faster at 4.33–4.41 tokens/sec. INT8 received
+only small diagnostic smoke checks and is not the baseline. Both precision
+trials returned READY, `ip addr`, and 56 for 7×8; for a WAL/OOM diagnostic they
+returned `OOMKilled`, which identifies the event less explicitly than the
+expected memory-pressure diagnosis. These results do not establish general
+troubleshooting quality.
+
+Reproduction scripts, raw JSON and the comparison report are under ignored
+`work/npu/qwen35-cooling-*`, `qwen35-output-placement.*`, and
+`qwen35-cpu-output-service.*`.
 
 For standalone hardware checks, build `.#rknpu-matmul-smoke` or `.#rknpu-smoke`
 on an aarch64 Linux builder. Stop `qwen-local.service` before running their

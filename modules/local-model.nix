@@ -15,6 +15,11 @@ in {
       default = pkgs.callPackage ../packages/rknpu/qwen35-model.nix { };
       description = "Qwen3.5-0.8B GGUF weights.";
     };
+    npuPrecision = lib.mkOption {
+      type = lib.types.enum [ "fp16" "int8" ];
+      default = "fp16";
+      description = "NPU matrix precision. INT8 is experimental and needs broader model quality validation.";
+    };
     contextSize = lib.mkOption {
       type = lib.types.ints.between 256 2048;
       default = 512;
@@ -27,6 +32,9 @@ in {
     };
   };
   config = lib.mkIf cfg.enable {
+    # Inference alternates short CPU bursts with NPU waits. The tested
+    # performance policy avoids schedutil downclocking those CPU bursts.
+    powerManagement.cpuFreqGovernor = lib.mkDefault "performance";
     appliance.npu.enable = lib.mkDefault true;
     appliance.npu.memoryMiB = lib.mkDefault 1536;
     appliance.npu.maxFrequencyMHz = lib.mkDefault 400;
@@ -74,16 +82,19 @@ in {
       startLimitBurst = 2;
       environment = {
         OMP_NUM_THREADS = "2";
-        RKNPU_HYBRID = "W16A16_STANDARD";
+        RKNPU_HYBRID = if cfg.npuPrecision == "int8" then "W8A8_STANDARD" else "W16A16_STANDARD";
       };
       serviceConfig = {
         ExecStart = lib.escapeShellArgs [
           "${cfg.package}/bin/llama-server"
           "--model" (toString cfg.model) "--alias" "qwen-local"
           "--host" "127.0.0.1" "--port" (toString cfg.port)
-          # Offload the 24 transformer blocks; retain the large tied output
-          # projection on the CPU within the existing contiguous-memory pool.
-          "--gpu-layers" "24" "--fit" "off" "--no-kv-offload"
+          # This fork includes the output layer in the offload count. Select
+          # all blocks and explicitly keep both names of the tied embedding /
+          # output weights in CPU memory.
+          "--gpu-layers" "99"
+          "--override-tensor" "(token_embd|output)[.]weight=CPU"
+          "--fit" "off" "--no-kv-offload"
           "--ctx-size" (toString cfg.contextSize) "--batch-size" "32" "--ubatch-size" "32"
           "--threads" "2" "--threads-batch" "2" "--parallel" "1"
           "--predict" "96"

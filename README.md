@@ -145,8 +145,11 @@ the Zero 2 W is ARM64. Neither is a supported target yet.
 
 Run `qwen-local "your question"` for one local answer, or `qwen-chat` for an
 interactive session (`/exit` to leave). Both use the same local model service;
-initial loading after boot takes tens of seconds. The model currently generates
-about 1.37–1.46 tokens/sec in short NPU tests and can give incorrect answers.
+initial loading after boot takes tens of seconds. With the tested heatsink and
+fan, the FP16 baseline generates about 2.04 tokens/sec in short requests. It
+explicitly keeps the tied output weights on the CPU and uses the CPU performance
+governor; the NPU remains at 400 MHz and CPU thermal protection stays enabled.
+The model can give incorrect answers.
 It does not execute repair commands. Inspect it with `systemctl status qwen-local` or
 `journalctl -u qwen-local -f`. The [NPU notes](packages/rknpu/README.md) describe
 the experimental port, memory use and validation.
