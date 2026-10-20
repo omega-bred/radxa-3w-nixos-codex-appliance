@@ -22,6 +22,18 @@ let
   dnsDown = pkgs.writeShellScript "cellular-dns-down" ''
     ${pkgs.openresolv}/bin/resolvconf -d "$1"
   '';
+  failover = cfg.failover;
+  failoverCommand = pkgs.writeShellScript "appliance-cellular-failover" ''
+    exec ${python} ${../../cellular/failover.py} \
+      --ip ${pkgs.iproute2}/bin/ip --curl ${pkgs.curl}/bin/curl \
+      --resolvconf ${pkgs.openresolv}/bin/resolvconf \
+      --wifi ${lib.escapeShellArg config.appliance.wifiInterface} \
+      --interval ${toString failover.intervalSeconds} \
+      --failures ${toString failover.failureThreshold} \
+      --recoveries ${toString failover.recoveryThreshold} \
+      --metric ${toString failover.routeMetric} \
+      ${lib.concatMapStringsSep " " (url: "--endpoint ${lib.escapeShellArg url}") failover.endpoints}
+  '';
 in {
   options.appliance.cellular = {
     enable = lib.mkEnableOption "Waveshare SIM7080G on the ZERO 3W GPIO header";
@@ -40,9 +52,29 @@ in {
       default = 700;
       description = "LTE default-route metric; Wi-Fi normally uses 600.";
     };
+    failover = {
+      enable = lib.mkEnableOption "automatic upstream failover and Wi-Fi recovery";
+      intervalSeconds = lib.mkOption { type = lib.types.ints.positive; default = 10; };
+      failureThreshold = lib.mkOption { type = lib.types.ints.positive; default = 3; };
+      recoveryThreshold = lib.mkOption { type = lib.types.ints.positive; default = 6; };
+      routeMetric = lib.mkOption {
+        type = lib.types.ints.positive;
+        default = 50;
+        description = "Temporary LTE metric during a Wi-Fi upstream outage.";
+      };
+      endpoints = lib.mkOption {
+        type = lib.types.nonEmptyListOf lib.types.str;
+        default = [ "https://1.1.1.1/cdn-cgi/trace" "https://8.8.8.8/" ];
+        description = "Independent HTTPS probe URLs with literal IPv4 hosts; either may succeed.";
+      };
+    };
   };
 
   config = lib.mkIf cfg.enable {
+    assertions = [ {
+      assertion = !failover.enable || (cfg.autostart && failover.routeMetric < cfg.routeMetric);
+      message = "Cellular failover requires autostart and a metric below the standby LTE metric.";
+    } ];
     # Pins 8/10 belong to the modem. An explicit alternate console also
     # overrides the DT's serial stdout-path on existing bootloaders.
     boot.kernelParams = [ "console=tty0" ];
@@ -117,6 +149,32 @@ in {
         RestartSec = lib.mkForce 60;
         # openresolv manages the shared resolv.conf through its normal hooks.
         ReadWritePaths = [ "/etc/resolv.conf" "/run/resolvconf" ];
+      };
+    };
+    systemd.services.appliance-cellular-failover = lib.mkIf failover.enable {
+      description = "Monitor Wi-Fi upstream and select LTE during outages";
+      wantedBy = [ "multi-user.target" ];
+      wants = [ "NetworkManager.service" "pppd-cellular.service" ];
+      after = [ "NetworkManager.service" "pppd-cellular.service" ];
+      path = [ pkgs.coreutils pkgs.systemd ];
+      serviceConfig = {
+        ExecStart = failoverCommand;
+        Restart = "on-failure";
+        RestartSec = 5;
+        TimeoutStopSec = 30;
+        RuntimeDirectory = "appliance-cellular-failover";
+        RuntimeDirectoryPreserve = "restart";
+        # openresolv's Avahi hook sends SIGHUP to the unprivileged daemon.
+        CapabilityBoundingSet = [ "CAP_NET_ADMIN" "CAP_NET_RAW" "CAP_KILL" ];
+        NoNewPrivileges = true;
+        ProtectSystem = "strict";
+        ProtectHome = true;
+        PrivateTmp = true;
+        PrivateDevices = true;
+        ProtectKernelTunables = true;
+        ProtectControlGroups = true;
+        ReadWritePaths = [ "/etc/resolv.conf" "/run/resolvconf" ];
+        RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_NETLINK" "AF_UNIX" ];
       };
     };
   };

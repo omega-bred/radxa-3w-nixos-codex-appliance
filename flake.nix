@@ -18,7 +18,12 @@
     };
     cellularAppliance = appliance.extendModules {
       modules = [ {
-        appliance.cellular = { enable = true; apn = "sensor.net"; autostart = true; };
+        appliance.cellular = {
+          enable = true;
+          apn = "sensor.net";
+          autostart = true;
+          failover.enable = true;
+        };
         appliance.updateFlake = "git+https://github.com/omega-bred/radxa-3w-nixos-codex-appliance?ref=stable#radxa-zero3w-cellular";
       } ];
     };
@@ -53,7 +58,8 @@
         pkgs.runCommand "cellular-tests" { nativeBuildInputs = [ pkgs.python3 ]; } ''
           cp -r ${./cellular} cellular
           cp ${./tests/test_cellular.py} test_cellular.py
-          python -m unittest -v test_cellular
+          cp ${./tests/test_failover.py} test_failover.py
+          python -m unittest -v test_cellular test_failover
           touch $out
         '';
     } // nixpkgs.lib.optionalAttrs (arch == system) {

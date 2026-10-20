@@ -181,17 +181,39 @@ Wi-Fi keeps its normal route metric 600; cellular uses metric 700. PPP adds and
 removes its DNS servers through openresolv. Loose reverse-path checking allows
 LTE replies while the preferred route uses Wi-Fi; the normal inbound firewall
 and Tailscale-only SSH access remain in force. A lost Wi-Fi route selects LTE.
-Detecting an upstream outage while Wi-Fi stays connected requires a separate
-health check and is not implemented here.
+
+The cellular variant also enables `appliance.cellular.failover.enable` to handle
+an upstream internet outage while Wi-Fi remains associated. Every ten seconds,
+the monitor checks verified HTTPS connections to two independent public IPs
+through Wi-Fi. Either endpoint may succeed. Three consecutive failed rounds
+trigger an LTE internet check; when LTE is working, a temporary metric-50 route
+and exclusive LTE DNS entry select it for internet traffic. LAN routes remain
+available. An unreachable IPv6 default prevents applications from waiting on a
+broken Wi-Fi IPv6 path while using this IPv4 modem.
+
+Recovery probes stay bound to Wi-Fi even while LTE is preferred. Six consecutive
+healthy rounds (about one minute) restore Wi-Fi routing and DNS. Brief successes
+reset after another failure, avoiding repeated switching on a flapping upstream.
+The monitor reconciles a reconnected PPP interface and preserves failover state
+across service restarts. Stopping it removes only its own route/DNS overrides.
+The normal PPP metric-700 standby route is retained throughout.
+
+Thresholds, interval, probe endpoints, and the temporary route metric are options
+under `appliance.cellular.failover`. The probe URLs use literal IPv4 addresses
+so Wi-Fi recovery checks cannot accidentally depend on DNS reached over LTE.
+LTE probes run only before promotion; ongoing recovery checks use Wi-Fi.
 
 The supplied cellular variant starts the connection at boot. For manual use,
 set `appliance.cellular.autostart = false`; this is the module option's default.
+Also disable `appliance.cellular.failover.enable` for manual-only operation.
 Measure idle Tailscale and application traffic against the SIM's data allowance.
 
 ```sh
 sudo systemctl start pppd-cellular
 sudo systemctl stop pppd-cellular
 journalctl -u appliance-cellular-power -u pppd-cellular
+journalctl -u appliance-cellular-failover
+cat /run/appliance-cellular-failover/status.json
 ip -4 address show ppp0
 ip -4 route
 sudo curl -4 --interface ppp0 https://1.1.1.1/cdn-cgi/trace
