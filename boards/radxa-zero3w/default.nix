@@ -17,7 +17,24 @@
   networking.usePredictableInterfaceNames = false;
   boot.loader.grub.enable = false;
   boot.loader.generic-extlinux-compatible.enable = true;
-  boot.kernelPackages = pkgs.linuxPackages_6_12;
+  # Keep the board on 6.12 for its drivers while fixing CVE-2026-98432
+  # (fixed in 6.12.113); the pinned NixOS channel still ships 6.12.93.
+  boot.kernelPackages = pkgs.linuxPackagesFor (pkgs.linux_6_12.override {
+    argsOverride = rec {
+      version = "6.12.115";
+      modDirVersion = version;
+      src = pkgs.fetchurl {
+        url = "mirror://kernel/linux/kernel/v6.x/linux-${version}.tar.xz";
+        hash = "sha256-DskP5LIEIrG2ZLd+bS3eIrQL1B5+ssrYrIc5pHScsbs=";
+      };
+      # Newer 6.12 releases backported the memory-hotplug policy rename;
+      # preserve NixOS's automatic onlining without the removed option.
+      structuredExtraConfig = {
+        MEMORY_HOTPLUG_DEFAULT_ONLINE = lib.mkForce lib.kernel.unset;
+        MHP_DEFAULT_ONLINE_TYPE_ONLINE_AUTO = lib.kernel.yes;
+      };
+    };
+  });
   boot.kernelParams = lib.mkIf (!config.appliance.cellular.enable) [ "console=ttyS2,1500000n8" ];
   # The AIC module supplies its own firmware; skip unrelated PC/GPU bundles.
   hardware.enableRedistributableFirmware = lib.mkForce false;

@@ -44,7 +44,22 @@
     };
     checks = nixpkgs.lib.genAttrs [ "x86_64-linux" "aarch64-linux" ] (arch: let
       pkgs = import nixpkgs { system = arch; };
+      kernel = appliance.config.boot.kernelPackages.kernel;
     in {
+      # Both images must use the fixed source, including both IPv4 option
+      # lifetimes affected by CVE-2026-98432 (child sockets and migrated requests).
+      kernel-security = assert nixpkgs.lib.versions.majorMinor kernel.version == "6.12";
+        assert nixpkgs.lib.versionAtLeast kernel.version "6.12.113";
+        assert kernel.modDirVersion == kernel.version;
+        assert kernel.drvPath == cellularAppliance.config.boot.kernelPackages.kernel.drvPath;
+        pkgs.runCommand "kernel-security-tests" { nativeBuildInputs = [ pkgs.gnutar pkgs.xz ]; } ''
+          tar -xJf ${kernel.src} --strip-components=1 \
+            linux-${kernel.version}/net/ipv4/af_inet.c \
+            linux-${kernel.version}/net/ipv4/tcp_ipv4.c
+          grep -F 'kfree_rcu(rcu_dereference_protected(inet->inet_opt, 1), rcu);' net/ipv4/af_inet.c
+          grep -F 'kfree_rcu(rcu_dereference_protected(inet_rsk(req)->ireq_opt, 1), rcu);' net/ipv4/tcp_ipv4.c
+          touch $out
+        '';
       provisioning = pkgs.runCommand "provisioning-tests" { nativeBuildInputs = [ pkgs.python3 ]; } ''
         cp -r ${./provision} provision
         cp ${./tests/test_provision.py} test_provision.py

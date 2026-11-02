@@ -23,7 +23,7 @@ let
     inherit src;
     nativeBuildInputs = kernel.moduleBuildDependencies;
     hardeningDisable = [ "pic" ];
-    patches = [ ./power-sequence.patch ];
+    patches = [ ./power-sequence.patch ./aic8800-monitor-channel.patch ];
     postPatch = ''
       for p in fix-linux-6.1-build fix-linux-6.5-build fix-linux-6.7-build \
                fix-linux-6.9-build fix-linux-6.12-build fix-sdio-firmware-path fix-sdio-fall-through; do

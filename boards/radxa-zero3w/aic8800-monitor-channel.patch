@@ -1,0 +1,30 @@
+# Adapt the SDIO monitor callback and its internal callers to the net_device
+# argument backported from Linux 6.13 into the appliance's 6.12 kernel.
+--- a/src/SDIO/driver_fw/driver/aic8800/aic8800_fdrv/rwnx_main.c
++++ b/src/SDIO/driver_fw/driver/aic8800/aic8800_fdrv/rwnx_main.c
+@@ -3402,6 +3402,7 @@
+  * configured at firmware level.
+  */
+ static int rwnx_cfg80211_set_monitor_channel(struct wiphy *wiphy,
++                                             struct net_device *dev,
+ 											 struct cfg80211_chan_def *chandef)
+ {
+ 	struct rwnx_hw *rwnx_hw = wiphy_priv(wiphy);
+@@ -3456,7 +3457,7 @@
+ 
+ int rwnx_cfg80211_set_monitor_channel_(struct wiphy *wiphy,
+                                              struct cfg80211_chan_def *chandef){
+-    return rwnx_cfg80211_set_monitor_channel(wiphy, chandef);
++    return rwnx_cfg80211_set_monitor_channel(wiphy, NULL, chandef);
+ }
+ 
+ 
+@@ -3875,7 +3876,7 @@
+ 
+ 	if (rwnx_vif->vif_index == rwnx_hw->monitor_vif) {
+ 		//retrieve channel from firmware
+-		rwnx_cfg80211_set_monitor_channel(wiphy, NULL);
++		rwnx_cfg80211_set_monitor_channel(wiphy, NULL, NULL);
+ 	}
+ 
+ 	//Check if channel context is valid

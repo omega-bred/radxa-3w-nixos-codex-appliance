@@ -135,6 +135,14 @@ Update dependencies deliberately with `nix flake update`; device updates don't
 float dependencies independently. The update repository must be readable by
 devices (public, or with separately configured Git credentials).
 
+Both images pin Linux **6.12.115** separately in `boards/radxa-zero3w/default.nix`
+to retain the Wi-Fi/NPU drivers' 6.12 compatibility while fixing
+[CVE-2026-98432](https://kernel.googlesource.com/pub/scm/linux/security/vulns/+/refs/heads/master/cve/published/2026/CVE-2026-98432.mbox)
+(fixed upstream in 6.12.113). `nix flake check` checks both affected IPv4 option
+freeing paths in the selected kernel source. Existing devices need to rebuild
+from the promoted `stable` revision and reboot into the new kernel for the fix
+to take effect.
+
 `modules/appliance.nix` holds shared services; `boards/radxa-zero3w/` holds the
 kernel, drivers, device tree and image layout. Add another board module and flake
 configuration, and override `appliance.wifiInterface` / `appliance.updateFlake`.
